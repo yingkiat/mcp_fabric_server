@@ -1,0 +1,20 @@
+# Virtual Environment
+.venv/
+venv/
+
+# VS Code settings (optional, but keeps repo clean)
+.vscode/
+
+# Logs and cache files
+logs/
+__pycache__/
+
+# macOS and system files
+.DS_Store
+
+# Python bytecode
+*.pyc
+*.pyo
+
+# .env files
+.env

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+openai
+pyodbc
+python-dotenv
+urllib3
+requests
