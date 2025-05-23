@@ -11,16 +11,16 @@ This FastAPI backend exposes your Microsoft Fabric Data Warehouse as an OpenAI M
   Returns the current schema (tables and views with columns/types) to help the agent understand the data warehouse structure.
 
 - **MCP Compliance**:  
-  Implements `/describe` and `/call` endpoints per the [OpenAI MCP protocol](https://openai.github.io/openai-agents-python/mcp/).  
+  Implements `/list_tools` and `/call_tool` endpoints per the [OpenAI MCP protocol](https://openai.github.io/openai-agents-python/mcp/).  
   Compatible with OpenAI agent tools and any LLM orchestration system supporting MCP.
 
 ## Endpoints
 
-- **`GET /describe`**  
+- **`GET /list_tools`**  
   Returns tool metadata and a list of available functions with argument schemas, per MCP spec.
 
-- **`POST /call`**  
-  Executes the specified function/tool with arguments. Example input:
+- **`POST /call_tool`**  
+  Executes the specified tool/function with arguments. Example input:
   ```json
   {
     "function": "run_sql_query",
@@ -47,19 +47,19 @@ This FastAPI backend exposes your Microsoft Fabric Data Warehouse as an OpenAI M
 
 - **Test discovery**
 
-    curl http://localhost:8000/describe
+    curl http://localhost:8000/list_tools
 
     See available functions/tools.
 
 - **Run a query**
 
-    curl -X POST http://localhost:8000/call \
+    curl -X POST http://localhost:8000/call_tool \
     -H "Content-Type: application/json" \
     -d '{"function": "run_sql_query", "arguments": {"question": "Show me all invoices for customer 123"}}'
 
 - **Get schema**
 
-    curl -X POST http://localhost:8000/call \
+    curl -X POST http://localhost:8000/call_tool \
     -H "Content-Type: application/json" \
     -d '{"function": "get_schema", "arguments": {}}'
 
@@ -68,7 +68,7 @@ This FastAPI backend exposes your Microsoft Fabric Data Warehouse as an OpenAI M
 
     The agent will auto-discover capabilities via /describe and can call functions via /call.
 
-    Notes
+- **Notes**
     This API is fully backward-compatible with any existing UI or script you have built atop /ask or /schema endpoints.
 
     Sensitive credentials should be provided only through environment variables or a secured .env file.    
@@ -100,3 +100,7 @@ AZURE_OPENAI_KEY=<your-azure-openai-key>
 AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
 ```
+
+### **Summary:**
+- **For MCP agent use, only `/list_tools` and `/call_tool` are required.**
+- **Remove `/ask` and `/schema` unless you need to support legacy direct integrations.**

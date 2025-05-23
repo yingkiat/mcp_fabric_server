@@ -51,22 +51,23 @@ def get_schema():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- MCP Describe ---
-@app.get("/describe")
-def describe():
+class ToolCallRequest(BaseModel):
+    tool: str
+    args: dict
+
+@app.get("/list_tools")
+def list_tools():
     return {
-        "name": "fabric_sql_agent",
-        "description": "Run SQL queries and fetch schema from Microsoft Fabric Data Warehouse.",
-        "functions": [
+        "tools": [
             {
                 "name": "run_sql_query",
-                "description": "Answer a business question by generating and running a SQL query.",
+                "description": "Generate and execute a SQL query based on a natural language question.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "question": {
                             "type": "string",
-                            "description": "The business question to answer (e.g., 'Show me all invoices for customer 123')"
+                            "description": "The natural language question to convert into a SQL query."
                         }
                     },
                     "required": ["question"]
@@ -74,7 +75,7 @@ def describe():
             },
             {
                 "name": "get_schema",
-                "description": "Get the current schema (tables and views).",
+                "description": "Retrieve the current database schema, including tables and views.",
                 "parameters": {
                     "type": "object",
                     "properties": {}
@@ -83,33 +84,34 @@ def describe():
         ]
     }
 
-# --- MCP Call ---
-class MCPCallRequest(BaseModel):
-    function: str
-    arguments: dict
-
-@app.post("/call")
-def mcp_call(req: MCPCallRequest):
+@app.post("/call_tool")
+def call_tool(request: ToolCallRequest):
     try:
-        if req.function == "run_sql_query":
-            question = req.arguments.get("question")
+        if request.tool == "run_sql_query":
+            question = request.args.get("question")
             if not question:
-                raise HTTPException(status_code=400, detail="Missing 'question'")
+                raise HTTPException(status_code=400, detail="Missing 'question' in arguments.")
             schema = get_schema_description()
             sql = generate_sql(question, schema)
             results = execute_sql(sql)
-            return {"result": {
-                "question": question,
-                "sql": sql,
-                "results": results
-            }}
-        elif req.function == "get_schema":
+            return {
+                "result": {
+                    "question": question,
+                    "sql": sql,
+                    "results": results
+                }
+            }
+        elif request.tool == "get_schema":
             schema = get_schema_description()
-            return {"result": {"schema": schema}}
+            return {
+                "result": {
+                    "schema": schema
+                }
+            }
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown function: {req.function}")
+            raise HTTPException(status_code=400, detail=f"Unknown tool: {request.tool}")
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
