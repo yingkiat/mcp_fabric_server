@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fabric MCP Agent - Test UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border-left: 5px solid #4facfe;
+        }
+        
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .input-group input, .input-group textarea, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus, .input-group textarea:focus, .input-group select:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .response {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .response pre {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .loading {
+            display: none;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #e74c3c;
+            background: #fdf2f2;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .success {
+            color: #27ae60;
+            background: #f2fff2;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .quick-tests {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .quick-test-btn {
+            background: #e9ecef;
+            color: #333;
+            border: 2px solid #e9ecef;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        
+        .quick-test-btn:hover {
+            background: #4facfe;
+            color: white;
+            border-color: #4facfe;
+        }
+        
+        .endpoint-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .endpoint-info code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .sql-results-table {
+            margin-top: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sql-results-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .sql-results-table th {
+            background: #4facfe;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .sql-results-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .sql-results-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .sql-results-table tr:hover {
+            background: #e3f2fd;
+        }
+        
+        .no-results {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔷 Fabric MCP Agent</h1>
+            <p>Test UI for Microsoft Fabric Data Warehouse MCP Server with Agentic Intelligence</p>
+        </div>
+        
+        <div class="content">
+            <!-- Agentic Intelligence Test -->
+            <div class="test-section">
+                <h2>🧠 Agentic Intelligence (Recommended)</h2>
+                <div class="endpoint-info">
+                    <strong>Endpoint:</strong> <code>POST /mcp</code><br>
+                    Uses intent classification, prompt modules, and tool chaining for enriched responses.
+                </div>
+                
+                <div class="input-group">
+                    <label for="agenticQuestion">Ask a business question:</label>
+                    <textarea id="agenticQuestion" rows="3" placeholder="tell me the components in MRH-011C"></textarea>
+                </div>
+                
+                <button class="btn" onclick="testAgentic()">🚀 Ask with AI Reasoning</button>
+                <div class="loading" id="agenticLoading">Processing with agentic intelligence...</div>
+                
+                <div class="quick-tests">
+                    <button class="quick-test-btn" onclick="setAgenticQuestion('tell me the components in MRH-011C')">Components in MRH-011C</button>
+                    <button class="quick-test-btn" onclick="setAgenticQuestion('What are the specifications for MRH-011C?')">MRH-011C Specs</button>
+                    <button class="quick-test-btn" onclick="setAgenticQuestion('Show me all products like MRH-011C')">Similar Products</button>
+                    <button class="quick-test-btn" onclick="setAgenticQuestion('What product types are available?')">Product Types</button>
+                </div>
+                
+                <div class="response" id="agenticResponse"></div>
+                
+                <!-- SQL Results Table -->
+                <div id="sqlResultsTable" style="display: none; margin-top: 20px;">
+                    <h3>📊 Query Results</h3>
+                    <div id="resultsContainer"></div>
+                </div>
+            </div>
+            
+            <!-- MCP Tool Test -->
+            <div class="test-section">
+                <h2>🔧 Individual MCP Tools</h2>
+                <div class="endpoint-info">
+                    <strong>Endpoint:</strong> <code>POST /call_tool</code><br>
+                    Execute specific MCP tools directly with custom arguments.
+                </div>
+                
+                <div class="input-group">
+                    <label for="toolSelect">Select Tool:</label>
+                    <select id="toolSelect" onchange="updateToolForm()">
+                        <option value="run_sql_query">run_sql_query</option>
+                        <option value="get_metadata">get_metadata</option>
+                        <option value="summarize_results">summarize_results</option>
+                        <option value="generate_visualization">generate_visualization</option>
+                    </select>
+                </div>
+                
+                <div id="toolArgsForm">
+                    <!-- Dynamic form based on selected tool -->
+                </div>
+                
+                <button class="btn" onclick="testTool()">🔧 Execute Tool</button>
+                <div class="loading" id="toolLoading">Executing tool...</div>
+                <div class="response" id="toolResponse"></div>
+            </div>
+            
+            <!-- Schema Discovery -->
+            <div class="test-section">
+                <h2>📊 Schema Discovery</h2>
+                <div class="endpoint-info">
+                    <strong>Endpoint:</strong> <code>GET /list_tools</code><br>
+                    Discover all available MCP tools and their schemas.
+                </div>
+                
+                <button class="btn" onclick="listTools()">📋 List Available Tools</button>
+                <div class="loading" id="schemaLoading">Loading tools...</div>
+                <div class="response" id="schemaResponse"></div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        // Agentic Intelligence Test
+        async function testAgentic() {
+            const question = document.getElementById('agenticQuestion').value;
+            if (!question.trim()) {
+                alert('Please enter a question');
+                return;
+            }
+            
+            showLoading('agenticLoading', true);
+            clearResponse('agenticResponse');
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+                
+                const result = await response.json();
+                showResponse('agenticResponse', result, response.ok);
+                
+                // Parse and display SQL results if available
+                if (result.tool_chain_results && result.tool_chain_results.run_sql_query) {
+                    displaySQLResults(result.tool_chain_results.run_sql_query.results);
+                }
+            } catch (error) {
+                showResponse('agenticResponse', { error: error.message }, false);
+            } finally {
+                showLoading('agenticLoading', false);
+            }
+        }
+        
+        function setAgenticQuestion(question) {
+            document.getElementById('agenticQuestion').value = question;
+        }
+        
+        // MCP Tool Test
+        async function testTool() {
+            const tool = document.getElementById('toolSelect').value;
+            const args = collectToolArgs();
+            
+            showLoading('toolLoading', true);
+            clearResponse('toolResponse');
+            
+            try {
+                const response = await fetch(`${API_BASE}/call_tool`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tool, args })
+                });
+                
+                const result = await response.json();
+                showResponse('toolResponse', result, response.ok);
+            } catch (error) {
+                showResponse('toolResponse', { error: error.message }, false);
+            } finally {
+                showLoading('toolLoading', false);
+            }
+        }
+        
+        function updateToolForm() {
+            const tool = document.getElementById('toolSelect').value;
+            const formContainer = document.getElementById('toolArgsForm');
+            
+            let formHTML = '';
+            
+            switch (tool) {
+                case 'run_sql_query':
+                    formHTML = `
+                        <div class="input-group">
+                            <label>Question (natural language):</label>
+                            <textarea id="sqlQuestion" rows="2" placeholder="What are our active products?"></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label>OR Direct SQL:</label>
+                            <textarea id="directSQL" rows="2" placeholder="SELECT * FROM JPNPROdb_ps_mstr WHERE status = 'active'"></textarea>
+                        </div>
+                    `;
+                    break;
+                case 'get_metadata':
+                    formHTML = `
+                        <div class="input-group">
+                            <label>Table Name (optional):</label>
+                            <input type="text" id="tableName" placeholder="JPNPROdb_ps_mstr">
+                        </div>
+                    `;
+                    break;
+                case 'summarize_results':
+                    formHTML = `
+                        <div class="input-group">
+                            <label>Data (JSON array):</label>
+                            <textarea id="dataToSummarize" rows="3" placeholder='[{"product": "A", "count": 10}]'></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label>Context:</label>
+                            <input type="text" id="summaryContext" placeholder="product_planning">
+                        </div>
+                    `;
+                    break;
+                case 'generate_visualization':
+                    formHTML = `
+                        <div class="input-group">
+                            <label>Data (JSON array):</label>
+                            <textarea id="vizData" rows="3" placeholder='[{"category": "A", "value": 10}]'></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label>Chart Type:</label>
+                            <select id="chartType">
+                                <option value="table">Table</option>
+                                <option value="bar">Bar Chart</option>
+                                <option value="line">Line Chart</option>
+                                <option value="pie">Pie Chart</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Title:</label>
+                            <input type="text" id="chartTitle" placeholder="Product Analysis">
+                        </div>
+                    `;
+                    break;
+            }
+            
+            formContainer.innerHTML = formHTML;
+        }
+        
+        function collectToolArgs() {
+            const tool = document.getElementById('toolSelect').value;
+            const args = {};
+            
+            switch (tool) {
+                case 'run_sql_query':
+                    const question = document.getElementById('sqlQuestion').value;
+                    const sql = document.getElementById('directSQL').value;
+                    if (question.trim()) args.question = question;
+                    if (sql.trim()) args.sql = sql;
+                    break;
+                case 'get_metadata':
+                    const tableName = document.getElementById('tableName').value;
+                    if (tableName.trim()) args.table_name = tableName;
+                    break;
+                case 'summarize_results':
+                    const data = document.getElementById('dataToSummarize').value;
+                    const context = document.getElementById('summaryContext').value;
+                    try {
+                        args.data = JSON.parse(data || '[]');
+                    } catch (e) {
+                        args.data = [];
+                    }
+                    if (context.trim()) args.context = context;
+                    break;
+                case 'generate_visualization':
+                    const vizData = document.getElementById('vizData').value;
+                    const chartType = document.getElementById('chartType').value;
+                    const title = document.getElementById('chartTitle').value;
+                    try {
+                        args.data = JSON.parse(vizData || '[]');
+                    } catch (e) {
+                        args.data = [];
+                    }
+                    if (chartType) args.chart_type = chartType;
+                    if (title.trim()) args.title = title;
+                    break;
+            }
+            
+            return args;
+        }
+        
+        // Schema Discovery
+        async function listTools() {
+            showLoading('schemaLoading', true);
+            clearResponse('schemaResponse');
+            
+            try {
+                const response = await fetch(`${API_BASE}/list_tools`);
+                const result = await response.json();
+                showResponse('schemaResponse', result, response.ok);
+            } catch (error) {
+                showResponse('schemaResponse', { error: error.message }, false);
+            } finally {
+                showLoading('schemaLoading', false);
+            }
+        }
+        
+        
+        // Utility Functions
+        function showLoading(elementId, show) {
+            document.getElementById(elementId).style.display = show ? 'block' : 'none';
+        }
+        
+        function clearResponse(elementId) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = '';
+            element.className = 'response';
+        }
+        
+        function showResponse(elementId, data, success) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            element.className = `response ${success ? 'success' : 'error'}`;
+        }
+        
+        function displaySQLResults(results) {
+            const tableContainer = document.getElementById('sqlResultsTable');
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            if (!results || results.length === 0) {
+                resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
+                tableContainer.style.display = 'block';
+                return;
+            }
+            
+            // Create table
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const tbody = document.createElement('tbody');
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
+            const keys = Object.keys(results[0]);
+            keys.forEach(key => {
+                const th = document.createElement('th');
+                th.textContent = key;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            
+            // Create data rows
+            results.forEach(row => {
+                const tr = document.createElement('tr');
+                keys.forEach(key => {
+                    const td = document.createElement('td');
+                    td.textContent = row[key] || '';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            
+            table.appendChild(thead);
+            table.appendChild(tbody);
+            
+            resultsContainer.innerHTML = '';
+            const tableWrapper = document.createElement('div');
+            tableWrapper.className = 'sql-results-table';
+            tableWrapper.appendChild(table);
+            resultsContainer.appendChild(tableWrapper);
+            
+            tableContainer.style.display = 'block';
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateToolForm();
+        });
+    </script>
+</body>
+</html>
