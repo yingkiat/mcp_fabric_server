@@ -13,20 +13,23 @@ trigger:
       - .gitignore
 
 variables:
-  # Build variables
-  imageRepository: 'fabric-mcp-agent'
-  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
-  tag: '$(Build.BuildId)'
-  
-  # Azure Resource variables
-  containerRegistry: 'itapacdataacr.azurecr.io'
-  resourceGroup: 'M3-RG-ALZ-DWHS-ALYTICS-D-1'
-  containerAppName: 'fabric-mcp-agent'
-  keyVaultName: 'itapackeyvault'
-  keyVaultUrl: 'https://itapackeyvault.vault.azure.net/'
-
-# Import Service Principal credentials from Variable Group
-- group: ServicePrincipal
+  - name: imageRepository
+    value: 'fabric-mcp-agent'
+  - name: dockerfilePath
+    value: '$(Build.SourcesDirectory)/Dockerfile'
+  - name: tag
+    value: '$(Build.BuildId)'
+  - name: containerRegistry
+    value: 'itapacdataacr.azurecr.io'
+  - name: resourceGroup
+    value: 'M3-RG-ALZ-DWHS-ALYTICS-D-1'
+  - name: containerAppName
+    value: 'fabric-mcp-agent'
+  - name: keyVaultName
+    value: 'itapackeyvault'
+  - name: keyVaultUrl
+    value: 'https://itapackeyvault.vault.azure.net/'
+  - group: ServicePrincipal   # ✅ variable group now correctly inside variables list
 
 stages:
 - stage: Build
@@ -69,12 +72,10 @@ stages:
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                # Login using Service Principal from Variable Group
                 az login --service-principal \
                   --username "$(AZURE_CLIENT_ID)" \
                   --password "$(AZURE_SECRET)" \
                   --tenant "$(AZURE_TENANT_ID)"
-                
                 echo "✅ Authenticated with Service Principal"
 
           - task: AzureCLI@2
@@ -85,33 +86,25 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 echo "🚀 Starting Azure Container Apps deployment..."
-                
-                # Set variables
                 FULL_IMAGE_NAME="$(containerRegistry)/$(imageRepository):$(tag)"
                 LOCATION="eastus"
                 ENVIRONMENT_NAME="$(containerAppName)-env"
-                
+
                 echo "Image: $FULL_IMAGE_NAME"
                 echo "Resource Group: $(resourceGroup)"
                 echo "Container App: $(containerAppName)"
                 echo "Key Vault: $(keyVaultUrl)"
-                
-                # Install Container Apps extension
+
                 az extension add --name containerapp --upgrade --yes
-                
-                # Register providers
                 az provider register --namespace Microsoft.App --wait
                 az provider register --namespace Microsoft.OperationalInsights --wait
-                
-                # Verify Key Vault exists
+
                 if ! az keyvault show --name "$(keyVaultName)" --resource-group "$(resourceGroup)" &>/dev/null; then
                   echo "❌ Key Vault $(keyVaultName) not found in resource group $(resourceGroup)"
-                  echo "Please ensure Key Vault exists before running pipeline"
                   exit 1
                 fi
                 echo "✅ Key Vault $(keyVaultName) found"
-                
-                # Create Container Apps environment if not exists
+
                 if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
                   echo "Creating Container Apps environment..."
                   az containerapp env create \
@@ -119,8 +112,7 @@ stages:
                     --resource-group "$(resourceGroup)" \
                     --location "$LOCATION"
                 fi
-                
-                # Deploy or update Container App
+
                 if az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
                   echo "Updating existing Container App..."
                   az containerapp update \
@@ -144,11 +136,9 @@ stages:
                     --system-assigned \
                     --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
                 fi
-                
-                # Get managed identity and grant Key Vault access
+
                 echo "Configuring Key Vault access..."
                 APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
-                
                 if [[ -n "$APP_PRINCIPAL_ID" ]]; then
                   az role assignment create \
                     --assignee "$APP_PRINCIPAL_ID" \
@@ -157,8 +147,7 @@ stages:
                     --output none
                   echo "✅ Key Vault access configured"
                 fi
-                
-                # Get app URL
+
                 APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
                 echo "✅ Deployment complete!"
                 echo "App URL: https://$APP_URL"
@@ -171,14 +160,9 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 echo "🧪 Testing deployment..."
-                
                 APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
-                
-                # Wait for app to be ready
                 echo "Waiting for app to be ready..."
                 sleep 30
-                
-                # Test health endpoint
                 if curl -f "https://$APP_URL/list_tools" > /dev/null 2>&1; then
                   echo "✅ Health check passed"
                   echo "🌐 App URL: https://$APP_URL"
@@ -188,5 +172,4 @@ stages:
                 else
                   echo "❌ Health check failed"
                   echo "Check Container App logs for details"
-                  # Don't fail pipeline on health check failure
                 fi
