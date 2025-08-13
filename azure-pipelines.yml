@@ -19,8 +19,6 @@ variables:
     value: '$(Build.SourcesDirectory)/Dockerfile'
   - name: tag
     value: '$(Build.BuildId)'
-  - name: containerRegistry
-    value: 'itapacdataacr.azurecr.io'
   - name: resourceGroup
     value: 'M3-RG-ALZ-DWHS-ALYTICS-D-1'
   - name: containerAppName
@@ -86,7 +84,7 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 echo "🚀 Starting Azure Container Apps deployment..."
-                FULL_IMAGE_NAME="$(containerRegistry)/$(imageRepository):$(tag)"
+                FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):$(tag)"
                 LOCATION="eastus"
                 ENVIRONMENT_NAME="$(containerAppName)-env"
 
