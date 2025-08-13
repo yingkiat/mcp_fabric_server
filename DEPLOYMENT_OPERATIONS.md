@@ -29,8 +29,9 @@ cd mcp_fabric_server
 pip install -r requirements.txt
 ```
 
-#### 2. Configure Environment Variables
-Create `.env` file in project root:
+#### 2. Configure Secrets Management
+
+**Local Development**: Create `.env` file in project root:
 ```env
 # Fabric Data Warehouse Connection
 FABRIC_SQL_SERVER=your-fabric-server.datawarehouse.fabric.microsoft.com
@@ -46,6 +47,8 @@ AZURE_OPENAI_KEY=your-openai-key
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
 ```
+
+**Azure Container Apps**: Uses Azure Key Vault with Managed Identity (see Container Deployment section below)
 
 #### 3. Verify Configuration
 ```bash
@@ -63,20 +66,46 @@ curl http://localhost:8000/list_tools
 curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" -d '{"question": "test query"}'
 ```
 
-### Production Server Configuration
+### Production Deployment Options
 
-#### Using Docker (Recommended)
-```dockerfile
-FROM python:3.11-slim
+#### Azure Container Apps (Recommended for Production)
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+**Prerequisites**:
+- Azure CLI installed and logged in
+- Docker installed locally
+- Azure Container Registry created
 
-COPY . .
-EXPOSE 8000
+**Deployment Steps**:
+```bash
+# 1. Deploy to Azure Container Registry
+./deploy/azure-acr-deploy.sh your-registry-name your-resource-group
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# 2. Deploy to Azure Container Apps with Key Vault integration
+./deploy/azure-container-app.sh fabric-mcp-agent your-registry-name your-resource-group
+```
+
+**Key Vault Integration**:
+- Automatically creates Azure Key Vault if not exists
+- Populates secrets from local `.env` file
+- Creates Container App with Managed Identity
+- Grants Key Vault access to Container App
+- Zero secrets in environment variables
+
+**Secret Name Mapping**:
+| Environment Variable | Key Vault Secret |
+|---------------------|------------------|
+| `FABRIC_SQL_SERVER` | `fabric-sql-server` |
+| `AZURE_CLIENT_ID` | `azure-client-id` |
+| `AZURE_OPENAI_KEY` | `azure-openai-key` |
+
+#### Using Docker (Local/VM Deployment)
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
+
+# Or build manually
+docker build -t fabric-mcp-agent .
+docker run -p 8000:8000 --env-file .env fabric-mcp-agent
 ```
 
 #### Using systemd Service

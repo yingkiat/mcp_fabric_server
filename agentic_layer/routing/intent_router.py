@@ -36,30 +36,44 @@ def classify_intent(user_question: str, request_id: str = None) -> Dict[str, Any
     """
     
     classification_prompt = f"""
-You are an intent classifier for a Fabric Data Warehouse assistant. Analyze the user's question and determine:
+You are an intelligent intent classifier for a Fabric Data Warehouse assistant. 
 
-1. The primary intent/domain
-2. Which prompt module to use
-3. What tool chain is needed
-
-Available prompt modules:
-- product_planning: For queries about JPNPROdb_ps_mstr and JPNPROdb_pt_mstr tables, product specifications, part numbers, components analysis
+Available prompt modules and their static schema coverage:
+- product_planning: Complete schemas for JPNPROdb_ps_mstr, JPNPROdb_pt_mstr with sample data and proven query patterns
+- spt_sales_rep: Anything to do with surgical packs, components, and related queries
 
 Available tools:
-- get_metadata: Get table schema and sample data
+- get_metadata: Dynamic schema discovery (costs time/tokens)
 - run_sql_query: Execute SQL queries (from questions or direct SQL)  
 - summarize_results: Create business-friendly summaries
 - generate_visualization: Create charts and tables
 
-User question: "{user_question}"
+Analyze this question: "{user_question}"
+
+Determine:
+1. Primary intent and best prompt module
+2. Whether static schemas in prompt modules are sufficient 
+3. If dynamic metadata discovery is needed
+
+Metadata Strategy Rules:
+- "skip": Question fits established patterns, all tables covered by static schemas
+- "minimal": Need basic table validation only  
+- "full": Novel query, unknown tables, or complex cross-domain analysis
 
 Respond with JSON in this format:
 {{
     "intent": "primary domain (e.g., product_planning, components_analysis, etc.)",
     "prompt_module": "module_name",
     "confidence": 0.0-1.0,
+    "schema_confidence": "high|medium|low",
+    "metadata_strategy": "skip|minimal|full",
     "tool_chain": ["tool1", "tool2", "tool3"],
-    "reasoning": "explanation of classification and why this prompt module was selected"
+    "reasoning": "explanation of classification and why this metadata strategy was selected",
+    "table_coverage": {{
+        "mentioned_tables": ["table1", "table2"],
+        "covered_by_static": ["table1"], 
+        "needs_discovery": ["table2"]
+    }}
 }}
 """
     
@@ -104,8 +118,15 @@ Respond with JSON in this format:
             "intent": "product_planning", 
             "prompt_module": "product_planning",
             "confidence": 0.9,
-            "tool_chain": ["get_metadata", "run_sql_query", "summarize_results"],
-            "reasoning": f"Classified as component analysis query for MRH-011C (JSON parse error: {str(e)[:50]})"
+            "schema_confidence": "high",
+            "metadata_strategy": "skip",
+            "tool_chain": ["run_sql_query", "summarize_results"],
+            "reasoning": f"Fallback to product_planning with static schemas (JSON parse error: {str(e)[:50]})",
+            "table_coverage": {
+                "mentioned_tables": ["JPNPROdb_ps_mstr", "JPNPROdb_pt_mstr"],
+                "covered_by_static": ["JPNPROdb_ps_mstr", "JPNPROdb_pt_mstr"],
+                "needs_discovery": []
+            }
         }
 
 def execute_tool_chain(user_question: str, classification: Dict[str, Any], request_id: str = None) -> Dict[str, Any]:
@@ -126,21 +147,58 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
     }
     
     try:
-        # Execute tool chain
+        # Execute AI-determined metadata strategy first
+        metadata_strategy = classification.get("metadata_strategy", "full")
+        
+        if metadata_strategy == "skip":
+            # AI determined static schemas are sufficient
+            results["tool_results"]["metadata_decision"] = {
+                "strategy": "skip",
+                "reasoning": "Static schemas sufficient for this query",
+                "schema_confidence": classification.get("schema_confidence", "high")
+            }
+            
+        elif metadata_strategy == "minimal":
+            # AI wants basic table validation only
+            table_coverage = classification.get("table_coverage", {})
+            unknown_tables = table_coverage.get("needs_discovery", [])
+            if unknown_tables:
+                validation_metadata = {}
+                for table in unknown_tables:
+                    validation_metadata[table] = get_metadata(table)
+                results["tool_results"]["get_metadata"] = {
+                    "strategy": "minimal",
+                    "validation_results": validation_metadata
+                }
+            else:
+                results["tool_results"]["metadata_decision"] = {
+                    "strategy": "minimal_skipped",
+                    "reasoning": "No unknown tables found after AI analysis"
+                }
+                
+        elif metadata_strategy == "full":
+            # AI requested full discovery (novel/complex queries)
+            if classification["intent"] == "product_planning":
+                # Get metadata for both product tables
+                ps_metadata = get_metadata("JPNPROdb_ps_mstr")
+                pt_metadata = get_metadata("JPNPROdb_pt_mstr") 
+                results["tool_results"]["get_metadata"] = {
+                    "strategy": "full",
+                    "ps_mstr": ps_metadata,
+                    "pt_mstr": pt_metadata
+                }
+            else:
+                results["tool_results"]["get_metadata"] = {
+                    "strategy": "full",
+                    "full_schema": get_metadata()
+                }
+        
+        # Execute remaining tool chain
         for tool_name in classification["tool_chain"]:
             
             if tool_name == "get_metadata":
-                # For product planning, focus on the specific tables
-                if classification["intent"] == "product_planning":
-                    # Get metadata for both product tables
-                    ps_metadata = get_metadata("JPNPROdb_ps_mstr")
-                    pt_metadata = get_metadata("JPNPROdb_pt_mstr") 
-                    results["tool_results"]["get_metadata"] = {
-                        "ps_mstr": ps_metadata,
-                        "pt_mstr": pt_metadata
-                    }
-                else:
-                    results["tool_results"]["get_metadata"] = get_metadata()
+                # Skip - already handled above based on AI strategy
+                continue
             
             elif tool_name == "run_sql_query":
                 # Use the prompt context to generate better SQL

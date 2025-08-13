@@ -5,3 +5,6 @@ pyodbc
 python-dotenv
 urllib3
 requests
+azure-identity
+azure-keyvault-secrets
+certifi
