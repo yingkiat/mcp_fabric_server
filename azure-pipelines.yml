@@ -1,0 +1,192 @@
+# Azure DevOps CI/CD Pipeline for Fabric MCP Agent
+# Builds Docker image and deploys to Azure Container Apps with Key Vault integration
+
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+  paths:
+    exclude:
+      - README.md
+      - docs/
+      - .gitignore
+
+variables:
+  # Build variables
+  imageRepository: 'fabric-mcp-agent'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  tag: '$(Build.BuildId)'
+  
+  # Azure Resource variables
+  containerRegistry: 'itapacdataacr.azurecr.io'
+  resourceGroup: 'M3-RG-ALZ-DWHS-ALYTICS-D-1'
+  containerAppName: 'fabric-mcp-agent'
+  keyVaultName: 'itapackeyvault'
+  keyVaultUrl: 'https://itapackeyvault.vault.azure.net/'
+
+# Import Service Principal credentials from Variable Group
+- group: ServicePrincipal
+
+stages:
+- stage: Build
+  displayName: Build and Push Docker Image
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: Docker@2
+      displayName: Build and push Docker image to ACR
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: 'itapacdataacr'  # Service connection name
+        tags: |
+          $(tag)
+          latest
+
+- stage: Deploy
+  displayName: Deploy to Azure Container Apps
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy
+    pool:
+      vmImage: ubuntu-latest
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            displayName: Login with Service Principal
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                # Login using Service Principal from Variable Group
+                az login --service-principal \
+                  --username "$(AZURE_CLIENT_ID)" \
+                  --password "$(AZURE_SECRET)" \
+                  --tenant "$(AZURE_TENANT_ID)"
+                
+                echo "✅ Authenticated with Service Principal"
+
+          - task: AzureCLI@2
+            displayName: Deploy to Azure Container Apps
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "🚀 Starting Azure Container Apps deployment..."
+                
+                # Set variables
+                FULL_IMAGE_NAME="$(containerRegistry)/$(imageRepository):$(tag)"
+                LOCATION="eastus"
+                ENVIRONMENT_NAME="$(containerAppName)-env"
+                
+                echo "Image: $FULL_IMAGE_NAME"
+                echo "Resource Group: $(resourceGroup)"
+                echo "Container App: $(containerAppName)"
+                echo "Key Vault: $(keyVaultUrl)"
+                
+                # Install Container Apps extension
+                az extension add --name containerapp --upgrade --yes
+                
+                # Register providers
+                az provider register --namespace Microsoft.App --wait
+                az provider register --namespace Microsoft.OperationalInsights --wait
+                
+                # Verify Key Vault exists
+                if ! az keyvault show --name "$(keyVaultName)" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  echo "❌ Key Vault $(keyVaultName) not found in resource group $(resourceGroup)"
+                  echo "Please ensure Key Vault exists before running pipeline"
+                  exit 1
+                fi
+                echo "✅ Key Vault $(keyVaultName) found"
+                
+                # Create Container Apps environment if not exists
+                if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  echo "Creating Container Apps environment..."
+                  az containerapp env create \
+                    --name "$ENVIRONMENT_NAME" \
+                    --resource-group "$(resourceGroup)" \
+                    --location "$LOCATION"
+                fi
+                
+                # Deploy or update Container App
+                if az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  echo "Updating existing Container App..."
+                  az containerapp update \
+                    --name "$(containerAppName)" \
+                    --resource-group "$(resourceGroup)" \
+                    --image "$FULL_IMAGE_NAME" \
+                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                else
+                  echo "Creating new Container App..."
+                  az containerapp create \
+                    --name "$(containerAppName)" \
+                    --resource-group "$(resourceGroup)" \
+                    --environment "$ENVIRONMENT_NAME" \
+                    --image "$FULL_IMAGE_NAME" \
+                    --target-port 8000 \
+                    --ingress external \
+                    --min-replicas 1 \
+                    --max-replicas 3 \
+                    --cpu 1.0 \
+                    --memory 2.0Gi \
+                    --system-assigned \
+                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                fi
+                
+                # Get managed identity and grant Key Vault access
+                echo "Configuring Key Vault access..."
+                APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
+                
+                if [[ -n "$APP_PRINCIPAL_ID" ]]; then
+                  az role assignment create \
+                    --assignee "$APP_PRINCIPAL_ID" \
+                    --role "Key Vault Secrets User" \
+                    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
+                    --output none
+                  echo "✅ Key Vault access configured"
+                fi
+                
+                # Get app URL
+                APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
+                echo "✅ Deployment complete!"
+                echo "App URL: https://$APP_URL"
+
+          - task: AzureCLI@2
+            displayName: Test Deployment
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "🧪 Testing deployment..."
+                
+                APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
+                
+                # Wait for app to be ready
+                echo "Waiting for app to be ready..."
+                sleep 30
+                
+                # Test health endpoint
+                if curl -f "https://$APP_URL/list_tools" > /dev/null 2>&1; then
+                  echo "✅ Health check passed"
+                  echo "🌐 App URL: https://$APP_URL"
+                  echo "🔗 Test endpoints:"
+                  echo "   - https://$APP_URL/list_tools"
+                  echo "   - https://$APP_URL"
+                else
+                  echo "❌ Health check failed"
+                  echo "Check Container App logs for details"
+                  # Don't fail pipeline on health check failure
+                fi

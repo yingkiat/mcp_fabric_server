@@ -68,25 +68,30 @@ curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" -d '{
 
 ### Production Deployment Options
 
-#### Azure Container Apps (Recommended for Production)
+#### Azure DevOps CI/CD (Recommended for Production)
 
 **Prerequisites**:
-- Azure CLI installed and logged in
-- Docker installed locally
-- Azure Container Registry created
+- Azure DevOps project with repository
+- Azure Container Registry: `itapacdataacr.azurecr.io`
+- Azure Key Vault: `itapackeyvault` (pre-existing)
+- Service Principal with appropriate permissions
+- Variable Group `ServicePrincipal` with secrets: `AZURE_CLIENT_ID`, `AZURE_SECRET`, `AZURE_TENANT_ID`
 
 **Deployment Steps**:
 ```bash
-# 1. Deploy to Azure Container Registry
-./deploy/azure-acr-deploy.sh your-registry-name your-resource-group
+# 1. Push code to Azure DevOps
+git add .
+git commit -m "Deploy to Azure Container Apps"
+git push origin main
 
-# 2. Deploy to Azure Container Apps with Key Vault integration
-./deploy/azure-container-app.sh fabric-mcp-agent your-registry-name your-resource-group
+# 2. Pipeline automatically handles:
+#    - Docker image build and push to ACR
+#    - Container App deployment with Managed Identity
+#    - Key Vault access configuration
 ```
 
 **Key Vault Integration**:
-- Automatically creates Azure Key Vault if not exists
-- Populates secrets from local `.env` file
+- Uses existing Key Vault: `https://itapackeyvault.vault.azure.net/`
 - Creates Container App with Managed Identity
 - Grants Key Vault access to Container App
 - Zero secrets in environment variables
