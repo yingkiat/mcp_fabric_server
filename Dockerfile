@@ -1,5 +1,5 @@
 # Use Python 3.11 slim image
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
@@ -16,17 +16,15 @@ RUN apt-get update && apt-get install -y \
 # Replace your existing msodbcsql18 install RUN with this:
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl gnupg apt-transport-https; \
-    codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"; \
-    major="$(. /etc/os-release && echo "${VERSION_ID%%.*}")"; \
-    # Add Microsoft GPG key to keyring
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg apt-transport-https \
+      build-essential unixodbc-dev; \
     curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg; \
-    # Add Microsoft repo with signed-by
-    echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/${major}/prod ${codename} main" \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
       > /etc/apt/sources.list.d/microsoft-prod.list; \
     apt-get update; \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev; \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
