@@ -104,9 +104,16 @@ stages:
               inlineScript: |
                 echo "🚀 Starting Azure Container Apps deployment..."
                 FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):$(tag)"
-                LOCATION="eastus"
+                LOCATION="southeastasia"
                 ENVIRONMENT_NAME="$(containerAppName)-env"
+                ACR_SERVER="itapacdataacr.azurecr.io"
+                ACR_USERNAME="itapacdataacr"
+                ACR_PASSWORD=$(az keyvault secret show \
+                  --vault-name "$(keyVaultName)" \
+                  --name "itapacdataacr" \
+                  --query "value" -o tsv)
 
+                echo "🔑 Retrieved ACR credentials from Key Vault"
                 echo "Image: $FULL_IMAGE_NAME"
                 echo "Resource Group: $(resourceGroup)"
                 echo "Container App: $(containerAppName)"
@@ -136,6 +143,9 @@ stages:
                     --name "$(containerAppName)" \
                     --resource-group "$(resourceGroup)" \
                     --image "$FULL_IMAGE_NAME" \
+                    --registry-server "$ACR_SERVER" \
+                    --registry-username "$ACR_USERNAME" \
+                    --registry-password "$ACR_PASSWORD" \
                     --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
                 else
                   echo "Creating new Container App..."
@@ -144,6 +154,9 @@ stages:
                     --resource-group "$(resourceGroup)" \
                     --environment "$ENVIRONMENT_NAME" \
                     --image "$FULL_IMAGE_NAME" \
+                    --registry-server "$ACR_SERVER" \
+                    --registry-username "$ACR_USERNAME" \
+                    --registry-password "$ACR_PASSWORD" \
                     --target-port 8000 \
                     --ingress external \
                     --min-replicas 1 \
@@ -154,7 +167,7 @@ stages:
                     --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
                 fi
 
-                echo "Configuring Key Vault access..."
+                echo "🔐 Configuring Key Vault access..."
                 APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
                 if [[ -n "$APP_PRINCIPAL_ID" ]]; then
                   az role assignment create \
