@@ -31,23 +31,42 @@ variables:
 
 stages:
 - stage: Build
-  displayName: Build and Push Docker Image
+  displayName: Build and Push Docker Image (ACR Tasks)
   jobs:
   - job: Build
     displayName: Build
     pool:
       vmImage: ubuntu-latest
     steps:
-    - task: Docker@2
-      displayName: Build and push Docker image to ACR
+    - task: AzureCLI@2
+      displayName: Build & push image with ACR Tasks
       inputs:
-        command: buildAndPush
-        repository: $(imageRepository)
-        dockerfile: $(dockerfilePath)
-        containerRegistry: 'itapacdataacr'  # Service connection name
-        tags: |
-          $(tag)
-          latest
+        azureSubscription: 'Azure-ServiceConnection'     # ARM service connection
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -euo pipefail
+          REGISTRY_NAME="itapacdataacr"
+          REPO_NAME="$(imageRepository)"
+          TAG="$(tag)"
+          IMAGE_FQN="${REGISTRY_NAME}.azurecr.io/${REPO_NAME}:${TAG}"
+
+          echo "🔧 Using ACR Tasks to build ${IMAGE_FQN}"
+          az acr build \
+            --registry "${REGISTRY_NAME}" \
+            --image "${REPO_NAME}:${TAG}" \
+            --file "$(dockerfilePath)" \
+            "$(Build.SourcesDirectory)"
+
+          echo "🔁 Tagging image as :latest"
+          az acr repository delete --name "${REGISTRY_NAME}" --image "${REPO_NAME}:latest" --yes >/dev/null 2>&1 || true
+          az acr import \
+            --name "${REGISTRY_NAME}" \
+            --source "${REGISTRY_NAME}.azurecr.io/${REPO_NAME}:${TAG}" \
+            --image "${REPO_NAME}:latest" \
+            --registry "${REGISTRY_NAME}"
+
+          echo "✅ Build & push complete: ${IMAGE_FQN}"
 
 - stage: Deploy
   displayName: Deploy to Azure Container Apps
