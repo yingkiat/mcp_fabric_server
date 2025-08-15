@@ -507,8 +507,10 @@
                 const result = await response.json();
                 showResponse('agenticResponse', result, response.ok);
                 
-                // Parse and display SQL results if available
-                if (result.tool_chain_results && result.tool_chain_results.run_sql_query) {
+                // Parse and display results based on execution strategy
+                if (result.tool_chain_results && result.tool_chain_results.stage3_evaluation) {
+                    displayAgenticResults(result);
+                } else if (result.tool_chain_results && result.tool_chain_results.run_sql_query) {
                     displaySQLResults(result.tool_chain_results.run_sql_query.results);
                 }
             } catch (error) {
@@ -690,6 +692,114 @@
             element.className = `response ${success ? 'success' : 'error'}`;
         }
         
+        function displayAgenticResults(result) {
+            const tableContainer = document.getElementById('sqlResultsTable');
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            // Clear previous results
+            resultsContainer.innerHTML = '';
+            
+            let html = '';
+            
+            // Display Stage 3 Business Analysis if available
+            if (result.tool_chain_results && result.tool_chain_results.stage3_evaluation) {
+                const stage3 = result.tool_chain_results.stage3_evaluation;
+                
+                html += `
+                    <div class="stage3-analysis" style="margin-bottom: 30px; padding: 20px; background: #f0f8ff; border-radius: 10px; border-left: 5px solid #4facfe;">
+                        <h3 style="color: #333; margin-bottom: 15px;">🎯 Business Analysis</h3>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="color: #4facfe; margin-bottom: 10px;">Answer:</h4>
+                            <p style="font-size: 16px; line-height: 1.6; color: #333;">${stage3.business_answer}</p>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="color: #4facfe; margin-bottom: 10px;">Key Findings:</h4>
+                            <ul style="padding-left: 20px;">
+                                ${stage3.key_findings.map(finding => `<li style="margin-bottom: 8px; color: #555;">${finding}</li>`).join('')}
+                            </ul>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="color: #4facfe; margin-bottom: 10px;">Recommended Action:</h4>
+                            <p style="font-style: italic; color: #666; background: #fff; padding: 10px; border-radius: 5px;">${stage3.recommended_action}</p>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                            <div>
+                                <strong style="color: #4facfe;">Confidence:</strong> 
+                                <span style="padding: 3px 8px; background: ${stage3.supporting_data.confidence === 'high' ? '#28a745' : stage3.supporting_data.confidence === 'medium' ? '#ffc107' : '#dc3545'}; color: white; border-radius: 3px; font-size: 12px;">${stage3.supporting_data.confidence}</span>
+                            </div>
+                            <div>
+                                <strong style="color: #4facfe;">Data Quality:</strong> 
+                                <span style="color: #666;">${stage3.data_quality}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Display detailed SQL results if available  
+            if (result.tool_chain_results && result.tool_chain_results.stage2_query && result.tool_chain_results.stage2_query.results) {
+                const sqlResults = result.tool_chain_results.stage2_query.results;
+                html += '<h3 style="color: #333; margin-bottom: 15px;">📊 Detailed Data</h3>';
+                html += generateSQLTable(sqlResults);
+            } else if (result.tool_chain_results && result.tool_chain_results.run_sql_query && result.tool_chain_results.run_sql_query.results) {
+                const sqlResults = result.tool_chain_results.run_sql_query.results;
+                html += '<h3 style="color: #333; margin-bottom: 15px;">📊 Query Results</h3>';
+                html += generateSQLTable(sqlResults);
+            }
+            
+            // Display summary if available
+            if (result.tool_chain_results && result.tool_chain_results.summarize_results) {
+                const summary = result.tool_chain_results.summarize_results;
+                html += `
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <h4 style="color: #333; margin-bottom: 10px;">📋 Data Summary</h4>
+                        <p style="color: #666;">${summary.summary}</p>
+                        <small style="color: #999;">Records found: ${summary.row_count || 'N/A'}</small>
+                    </div>
+                `;
+            }
+            
+            if (html) {
+                resultsContainer.innerHTML = html;
+                tableContainer.style.display = 'block';
+            } else {
+                resultsContainer.innerHTML = '<div class="no-results">No results to display</div>';
+                tableContainer.style.display = 'block';
+            }
+        }
+        
+        function generateSQLTable(results) {
+            if (!results || results.length === 0) {
+                return '<div class="no-results">No data found</div>';
+            }
+            
+            const keys = Object.keys(results[0]);
+            let tableHTML = `
+                <div class="sql-results-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                ${keys.map(key => `<th>${key}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(row => `
+                                <tr>
+                                    ${keys.map(key => `<td>${row[key] || ''}</td>`).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            return tableHTML;
+        }
+
         function displaySQLResults(results) {
             const tableContainer = document.getElementById('sqlResultsTable');
             const resultsContainer = document.getElementById('resultsContainer');
