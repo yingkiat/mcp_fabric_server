@@ -135,6 +135,24 @@ stages:
                     --name "$ENVIRONMENT_NAME" \
                     --resource-group "$(resourceGroup)" \
                     --location "$LOCATION"
+                  
+                  echo "Waiting for environment to be fully provisioned..."
+                  # Wait for environment to be ready
+                  for i in {1..30}; do
+                    if az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv | grep -q "Succeeded"; then
+                      echo "✅ Environment provisioned successfully"
+                      break
+                    fi
+                    echo "Waiting for environment... ($i/30)"
+                    sleep 10
+                  done
+                  
+                  # Final check
+                  ENV_STATE=$(az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv)
+                  if [ "$ENV_STATE" != "Succeeded" ]; then
+                    echo "❌ Environment provisioning failed. State: $ENV_STATE"
+                    exit 1
+                  fi
                 fi
 
                 # First, create/update the Container App
@@ -165,6 +183,13 @@ stages:
                     --memory 2.0Gi \
                     --system-assigned
                 fi
+
+                # Verify Container App was created successfully
+                if ! az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  echo "❌ Container App creation failed"
+                  exit 1
+                fi
+                echo "✅ Container App created/updated successfully"
 
                 echo "🔐 Configuring Key Vault access..."
                 APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
