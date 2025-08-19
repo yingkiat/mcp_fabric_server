@@ -129,7 +129,31 @@ stages:
                 fi
                 echo "✅ Key Vault $(keyVaultName) found"
 
-                if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                # Check environment status and handle failed states
+                ENV_STATE=""
+                if az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  ENV_STATE=$(az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv)
+                  echo "Existing environment state: $ENV_STATE"
+                  
+                  if [[ "$ENV_STATE" == "ScheduledForDelete" || "$ENV_STATE" == "Failed" ]]; then
+                    echo "Environment in bad state ($ENV_STATE), deleting..."
+                    az containerapp env delete --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --yes
+                    
+                    # Wait for deletion to complete
+                    echo "Waiting for environment deletion..."
+                    for i in {1..20}; do
+                      if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                        echo "✅ Environment deleted successfully"
+                        break
+                      fi
+                      echo "Waiting for deletion... ($i/20)"
+                      sleep 15
+                    done
+                    ENV_STATE=""
+                  fi
+                fi
+                
+                if [[ "$ENV_STATE" != "Succeeded" ]]; then
                   echo "Creating Container Apps environment..."
                   az containerapp env create \
                     --name "$ENVIRONMENT_NAME" \
