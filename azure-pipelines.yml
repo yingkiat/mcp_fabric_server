@@ -218,16 +218,29 @@ stages:
                 echo "🔐 Configuring Key Vault access..."
                 APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
                 if [[ -n "$APP_PRINCIPAL_ID" ]]; then
+                  echo "Container App Principal ID: $APP_PRINCIPAL_ID"
+                  
                   az role assignment create \
                     --assignee "$APP_PRINCIPAL_ID" \
                     --role "Key Vault Secrets User" \
                     --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
                     --output none 2>/dev/null || echo "Role assignment may already exist"
-                  echo "✅ Key Vault access configured"
+                  echo "✅ Key Vault role assignment completed"
                   
-                  # Wait for role assignment to propagate
+                  # Wait longer for role assignment to propagate
                   echo "Waiting for Key Vault permissions to propagate..."
-                  sleep 30
+                  sleep 60
+                  
+                  # Verify Key Vault access works by testing secret retrieval
+                  echo "🔍 Verifying Key Vault access..."
+                  for i in {1..10}; do
+                    if az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaikey" --query "value" -o tsv >/dev/null 2>&1; then
+                      echo "✅ Key Vault access verified - secrets are accessible"
+                      break
+                    fi
+                    echo "Waiting for Key Vault access... ($i/10)"
+                    sleep 15
+                  done
                 fi
 
                 echo "🔐 Configuring secrets from Key Vault..."
