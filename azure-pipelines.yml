@@ -200,6 +200,10 @@ stages:
                     --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
                     --output none 2>/dev/null || echo "Role assignment may already exist"
                   echo "✅ Key Vault access configured"
+                  
+                  # Wait for role assignment to propagate
+                  echo "Waiting for Key Vault permissions to propagate..."
+                  sleep 30
                 fi
 
                 echo "🔐 Configuring secrets from Key Vault..."
