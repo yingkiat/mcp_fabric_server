@@ -137,6 +137,7 @@ stages:
                     --location "$LOCATION"
                 fi
 
+                # First, create/update the Container App
                 if az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
                   echo "Updating existing Container App..."
                   az containerapp update \
@@ -145,8 +146,7 @@ stages:
                     --image "$FULL_IMAGE_NAME" \
                     --registry-server "$ACR_SERVER" \
                     --registry-username "$ACR_USERNAME" \
-                    --registry-password "$ACR_PASSWORD" \
-                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                    --registry-password "$ACR_PASSWORD"
                 else
                   echo "Creating new Container App..."
                   az containerapp create \
@@ -163,8 +163,7 @@ stages:
                     --max-replicas 3 \
                     --cpu 1.0 \
                     --memory 2.0Gi \
-                    --system-assigned \
-                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                    --system-assigned
                 fi
 
                 echo "🔐 Configuring Key Vault access..."
@@ -174,9 +173,34 @@ stages:
                     --assignee "$APP_PRINCIPAL_ID" \
                     --role "Key Vault Secrets User" \
                     --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
-                    --output none
+                    --output none 2>/dev/null || echo "Role assignment may already exist"
                   echo "✅ Key Vault access configured"
                 fi
+
+                echo "🔐 Configuring secrets from Key Vault..."
+                # Update Container App with Key Vault secret references using actual secret names
+                az containerapp secret set \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(resourceGroup)" \
+                  --secrets \
+                    azure-openai-key="keyvaultref:$(keyVaultUrl)secrets/azureopenaikey,identityref:system" \
+                    azure-openai-endpoint="keyvaultref:$(keyVaultUrl)secrets/azureopenaiendpoint,identityref:system" \
+                    azure-client-id="keyvaultref:$(keyVaultUrl)secrets/azureclientid,identityref:system" \
+                    azure-client-secret="keyvaultref:$(keyVaultUrl)secrets/azureclientsecret,identityref:system" \
+                    azure-tenant-id="keyvaultref:$(keyVaultUrl)secrets/azuretenantid,identityref:system"
+
+                # Set environment variables to reference the secrets
+                az containerapp update \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(resourceGroup)" \
+                  --set-env-vars \
+                    KEY_VAULT_URL="$(keyVaultUrl)" \
+                    AZURE_OPENAI_KEY="secretref:azure-openai-key" \
+                    AZURE_OPENAI_ENDPOINT="secretref:azure-openai-endpoint" \
+                    AZURE_OPENAI_DEPLOYMENT="gpt-4o" \
+                    AZURE_CLIENT_ID="secretref:azure-client-id" \
+                    AZURE_CLIENT_SECRET="secretref:azure-client-secret" \
+                    AZURE_TENANT_ID="secretref:azure-tenant-id"
 
                 APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
                 echo "✅ Deployment complete!"
