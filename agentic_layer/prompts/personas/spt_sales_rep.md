@@ -1,5 +1,7 @@
 ## SPT Sales Rep - Competitive Replacement Specialist (Japan Market)
 
+For Japanese, it is CRUCIAL to use single-byte katakana instead of double-byte katakana.
+
 ### 🔄 Multi-Stage Execution Behavior
 
 **Execution Strategy**: multi_stage
@@ -105,8 +107,7 @@ ORDER BY pt_desc1
 SELECT 
     comp.pt_part AS comp_part, 
     comp.pt_desc1 AS comp_desc, 
-    pt.pt_part AS spt_kit, 
-    pt.pt_desc1, 
+
     nqpr.nqpr_price, 
     ps.ps_qty_per
 FROM JPNPROdb_pt_mstr comp

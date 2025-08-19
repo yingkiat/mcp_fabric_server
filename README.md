@@ -40,8 +40,9 @@ Advanced intelligent system with **3 execution strategies**:
 - **Azure OpenAI Caching**: Automatic response optimization for repeated queries
 
 ### ✅ Enterprise Features
-- **Comprehensive Logging**: JSON-structured logs with request tracking and performance metrics
-- **Performance Monitoring**: Real-time dashboard with session-based analytics
+- **🆕 Token Usage Optimization**: Data compression reducing token usage by 50-80%
+- **🆕 Session-Based Logging**: Complete session traces in `logs/sessions/` for easy debugging
+- **Performance Monitoring**: Real-time cost tracking and compression statistics
 - **Error Tracking**: Full error context with automated recovery mechanisms
 - **Security**: Azure AD authentication with read-only database access
 
@@ -132,7 +133,19 @@ curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
 -d '{"question": "Analyze components and pricing for MRH-011C and recommend optimization opportunities"}'
 ```
 
-### 5. Access the Web UI
+### 5. **🆕 Session Debugging & Monitoring**
+```bash
+# View recent session logs with optimization stats
+python view_session.py
+
+# View detailed session trace (compression, tokens, cost)
+python view_session.py 1
+
+# List all session files
+ls logs/sessions/
+```
+
+### 6. Access the Web UI
 ```bash
 # Open your browser and visit:
 http://localhost:8000

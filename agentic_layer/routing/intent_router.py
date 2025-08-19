@@ -21,6 +21,23 @@ client = AzureOpenAI(
     azure_endpoint=AZURE_OPENAI_ENDPOINT
 )
 
+def get_model_params(model_name: str, max_tokens: int, temperature: float = 0) -> dict:
+    """Get appropriate parameters for different model APIs"""
+    params = {}
+    
+    # GPT-5 and newer models have different parameter requirements
+    if 'gpt-5' in model_name.lower() or 'o1' in model_name.lower():
+        params["max_completion_tokens"] = max_tokens
+        # GPT-5 models don't support temperature=0, only default (1)
+        if temperature != 1:
+            params["temperature"] = 1  # Force to default
+    else:
+        # GPT-4o, GPT-4, and older models use max_tokens  
+        params["max_tokens"] = max_tokens
+        params["temperature"] = temperature
+    
+    return params
+
 def load_prompt_module(module_name: str) -> str:
     """Load prompt module content from markdown file"""
     prompt_path = f"agentic_layer/prompts/{module_name}.md"
@@ -158,26 +175,39 @@ Respond with JSON:
 }}
 """
     
+    # Get model-appropriate parameters
+    model_params = get_model_params(AZURE_OPENAI_DEPLOYMENT, 500, 0)
+    
     response = client.chat.completions.create(
         model=AZURE_OPENAI_DEPLOYMENT,
         messages=[
             {"role": "system", "content": "You are a JSON classifier. Return ONLY valid JSON, no other text."},
             {"role": "user", "content": classification_prompt}
         ],
-        temperature=0,
-        max_tokens=500,
+        **model_params
     )
     
-    # Log API call
+    # Log API call with session logger
     if request_id:
-        from logging_config import tracker
-        usage = response.usage if hasattr(response, 'usage') else None
-        prompt_tokens = usage.prompt_tokens if usage else 0
-        completion_tokens = usage.completion_tokens if usage else 0
-        tracker.log_api_call(request_id, AZURE_OPENAI_DEPLOYMENT, prompt_tokens, completion_tokens, "intent_classification")
+        try:
+            from session_logger import get_session_logger
+            session_logger = get_session_logger(request_id, user_question)
+            usage = response.usage if hasattr(response, 'usage') else None
+            prompt_tokens = usage.prompt_tokens if usage else 0
+            completion_tokens = usage.completion_tokens if usage else 0
+            session_logger.log_api_call("intent_classification", AZURE_OPENAI_DEPLOYMENT, prompt_tokens, completion_tokens)
+        except Exception as e:
+            pass  # Don't fail if logging fails
     
     try:
-        raw_content = response.choices[0].message.content.strip()
+        raw_content = response.choices[0].message.content
+        
+        # Check for empty responses (common with GPT-5 models)
+        if not raw_content or raw_content.strip() == "":
+            print(f"⚠️ Empty response from {AZURE_OPENAI_DEPLOYMENT}")
+            raw_content = "{}"  # Treat as empty JSON to trigger fallback
+        
+        raw_content = raw_content.strip()
         
         # Try to extract JSON if wrapped in code blocks or extra text
         if '```json' in raw_content:
@@ -190,19 +220,26 @@ Respond with JSON:
             raw_content = raw_content[json_start:json_end]
         
         result = json.loads(raw_content)
+        
+        # Check if we got an empty or incomplete result
+        if not result or 'persona' not in result:
+            print(f"⚠️ Incomplete JSON response from {AZURE_OPENAI_DEPLOYMENT}: {result}")
+            raise ValueError("Missing required fields in classification response")
+        
         return result
     except (json.JSONDecodeError, ValueError) as e:
         print(f"JSON parsing error: {e}")
         print(f"Raw response: {response.choices[0].message.content}")
-        # Fallback with better reasoning
+        
+        # Generic fallback - don't try to guess intent
         return {
             "intent": "general_query", 
             "persona": "product_planning",
-            "confidence": 0.9,
+            "confidence": 0.5,
             "execution_strategy": "single_stage",
             "metadata_strategy": "skip",
             "tool_chain": ["run_sql_query", "summarize_results"],
-            "reasoning": f"Fallback to product_planning persona (JSON parse error: {str(e)[:50]})",
+            "reasoning": f"Fallback due to {AZURE_OPENAI_DEPLOYMENT} response issue: {str(e)[:50]}",
             "requires_intermediate_processing": False,
             "actual_tables": ["JPNPROdb_ps_mstr", "JPNPROdb_pt_mstr"]
         }
@@ -378,9 +415,25 @@ USER QUESTION: {user_question}
 
 STAGE 3 TASK: Evaluate final results to extract clear business answer using persona domain expertise.
 
-Final Data Sample (first 10 rows):
-{str(final_data[:10]) if final_data else "No data available"}
+Final Data Sample (compressed):
+{compress_data_for_llm(final_data, max_records=10) if final_data else "No data available"}
 """
+            
+            # Log compression stats for Stage 3 with session logger
+            if final_data and request_id:
+                try:
+                    from session_logger import get_session_logger
+                    session_logger = get_session_logger(request_id, user_question)
+                    compressed_sample = compress_data_for_llm(final_data, max_records=10)
+                    compression_stats = get_compression_stats(final_data, compressed_sample)
+                    session_logger.log_data_compression(
+                        "stage3_evaluation", 
+                        compression_stats['original_size'], 
+                        compression_stats['compressed_size'], 
+                        compression_stats['compression_ratio']
+                    )
+                except Exception as e:
+                    pass  # Don't fail if logging fails
             
             # Use LLM for evaluation (no SQL execution - just analysis)
             evaluation_result = evaluate_final_results(stage3_context, request_id)
@@ -427,14 +480,16 @@ CRITICAL: Escape all special characters in JSON strings. Use simple ASCII charac
 """
     
     try:
+        # Get model-appropriate parameters
+        model_params = get_model_params(AZURE_OPENAI_DEPLOYMENT, 500, 0)
+        
         response = client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT,
             messages=[
                 {"role": "system", "content": "You are a business analyst. Analyze data and provide insights. DO NOT generate SQL queries."},
                 {"role": "user", "content": evaluation_prompt}
             ],
-            temperature=0,
-            max_tokens=500,
+            **model_params
         )
         
         # Log API call
@@ -520,12 +575,89 @@ CRITICAL: Escape all special characters in JSON strings. Use simple ASCII charac
             "error": str(e)
         }
 
+def get_compression_stats(original_records: list, compressed_output: str) -> dict:
+    """Calculate compression effectiveness for monitoring"""
+    if not original_records:
+        return {"compression_ratio": 0, "token_savings": 0}
+    
+    original_size = len(str(original_records))
+    compressed_size = len(compressed_output)
+    compression_ratio = (original_size - compressed_size) / original_size if original_size > 0 else 0
+    
+    return {
+        "original_size": original_size,
+        "compressed_size": compressed_size, 
+        "compression_ratio": round(compression_ratio, 3),
+        "token_savings": original_size - compressed_size
+    }
+
+def compress_data_for_llm(records: list, max_records: int = 10) -> str:
+    """Compress data by extracting common fields and reducing redundancy"""
+    if not records or len(records) == 0:
+        return "No data available"
+    
+    # Limit records first
+    limited_records = records[:max_records]
+    
+    if len(limited_records) == 1:
+        # Single record - just format cleanly
+        record = limited_records[0]
+        return ", ".join([f"{k}: {v}" for k, v in record.items() if v is not None])
+    
+    # Detect common fields across all records
+    common_fields = {}
+    first_record = limited_records[0]
+    
+    for key in first_record.keys():
+        values = [record.get(key) for record in limited_records]
+        unique_values = set(v for v in values if v is not None)
+        
+        # If all non-null values are identical, it's a common field
+        if len(unique_values) <= 1:
+            common_fields[key] = list(unique_values)[0] if unique_values else None
+    
+    # Extract varying fields only
+    varying_records = []
+    for record in limited_records:
+        varying = {k: v for k, v in record.items() 
+                  if k not in common_fields and v is not None}
+        if varying:  # Only include if there are varying fields
+            varying_records.append(varying)
+    
+    # Format compressed output
+    if common_fields:
+        common_str = ", ".join([f"{k}: {v}" for k, v in common_fields.items() if v is not None])
+        varying_str = " | ".join([
+            ", ".join([f"{k}: {v}" for k, v in record.items()]) 
+            for record in varying_records[:5]  # Limit varying records too
+        ])
+        return f"Common: {common_str} | Variants: {varying_str}"
+    else:
+        # No common fields, just show first few records compactly
+        return " | ".join([
+            ", ".join([f"{k}: {v}" for k, v in record.items() if v is not None])
+            for record in limited_records[:3]
+        ])
+
 def process_intermediate_results(stage1_data: list, user_question: str, prompt_context: str) -> Dict[str, Any]:
     """AI processes Stage 1 results to inform Stage 2"""
     
-    # Limit data for AI processing (avoid token limits)
-    limited_data = stage1_data[:10] if len(stage1_data) > 10 else stage1_data
-    data_summary = "\n".join([str(item) for item in limited_data])
+    # Use compressed data representation instead of raw stringification
+    data_summary = compress_data_for_llm(stage1_data, max_records=10)
+    
+    # Log compression stats with session logger
+    try:
+        from session_logger import get_session_logger
+        session_logger = get_session_logger(request_id or "unknown", user_question)
+        compression_stats = get_compression_stats(stage1_data, data_summary)
+        session_logger.log_data_compression(
+            "stage1_intermediate", 
+            compression_stats['original_size'], 
+            compression_stats['compressed_size'], 
+            compression_stats['compression_ratio']
+        )
+    except Exception as e:
+        pass  # Don't fail if logging fails
     
     analysis_prompt = f"""
 Analyze these Stage 1 results and select the most relevant items for Stage 2 detailed analysis.
@@ -551,20 +683,24 @@ Return JSON format:
 """
     
     try:
+        # Get model-appropriate parameters
+        model_params = get_model_params(AZURE_OPENAI_DEPLOYMENT, 300, 0)
+        
         response = client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT,
             messages=[{"role": "user", "content": analysis_prompt}],
-            temperature=0,
-            max_tokens=300,
+            **model_params
         )
         
         import json
         return json.loads(response.choices[0].message.content.strip())
     except:
         # Fallback if AI processing fails
+        # Use compressed representation for fallback too
+        compressed_items = compress_data_for_llm(stage1_data[:3], max_records=3)
         return {
             "summary": f"Found {len(stage1_data)} potential matches",
-            "selected_items": [str(item) for item in limited_data[:3]],
+            "selected_items": compressed_items,
             "reasoning": "Automatic selection due to processing error",
             "stage2_focus": "detailed analysis of selected items"
         }
