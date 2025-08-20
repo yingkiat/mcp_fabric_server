@@ -222,6 +222,8 @@ stages:
                 AZURE_CLIENT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientid" --query "value" -o tsv)
                 AZURE_CLIENT_SECRET=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientsecret" --query "value" -o tsv)
                 AZURE_TENANT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azuretenantid" --query "value" -o tsv)
+                FABRIC_SQL_SERVER=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "fabricsqlserver" --query "value" -o tsv)
+                FABRIC_SQL_DATABASE=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "fabricsqldatabase" --query "value" -o tsv)
                 
                 echo "✅ Retrieved all secrets from Key Vault"
 
@@ -235,7 +237,9 @@ stages:
                     azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT" \
                     azure-client-id="$AZURE_CLIENT_ID" \
                     azure-client-secret="$AZURE_CLIENT_SECRET" \
-                    azure-tenant-id="$AZURE_TENANT_ID"
+                    azure-tenant-id="$AZURE_TENANT_ID" \
+                    fabric-sql-server="$FABRIC_SQL_SERVER" \
+                    fabric-sql-database="$FABRIC_SQL_DATABASE"
 
                 echo "✅ Secrets configured successfully"
 
@@ -249,7 +253,9 @@ stages:
                     AZURE_OPENAI_DEPLOYMENT="secretref:azure-openai-deployment" \
                     AZURE_CLIENT_ID="secretref:azure-client-id" \
                     AZURE_CLIENT_SECRET="secretref:azure-client-secret" \
-                    AZURE_TENANT_ID="secretref:azure-tenant-id"
+                    AZURE_TENANT_ID="secretref:azure-tenant-id" \
+                    FABRIC_SQL_SERVER="secretref:fabric-sql-server" \
+                    FABRIC_SQL_DATABASE="secretref:fabric-sql-database"
 
                 APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
                 echo "✅ Deployment complete!"
