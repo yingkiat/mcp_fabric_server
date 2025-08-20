@@ -2,7 +2,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 import time
 import json
@@ -98,10 +98,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve the test UI
+# Serve the test UI with dynamic API URL
 @app.get("/")
 def serve_ui():
-    return FileResponse("test_ui.html")
+    # Read the HTML template
+    with open("test_ui.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    
+    # Get API URL from environment or default to current server
+    api_url = os.getenv("FABRIC_MCP_API_URL", "http://localhost:8000")
+    subscription_key = os.getenv("APIM_SUBSCRIPTION_KEY", "YOUR_SUBSCRIPTION_KEY_HERE")
+    
+    # Replace the hardcoded API_BASE and subscription key with dynamic values
+    html_content = html_content.replace(
+        "const API_BASE = 'http://localhost:8000';",
+        f"const API_BASE = '{api_url}';"
+    )
+    html_content = html_content.replace(
+        "const SUBSCRIPTION_KEY = 'YOUR_SUBSCRIPTION_KEY_HERE';",
+        f"const SUBSCRIPTION_KEY = '{subscription_key}';"
+    )
+    
+    return HTMLResponse(content=html_content)
 
 class QueryRequest(BaseModel):
     question: str

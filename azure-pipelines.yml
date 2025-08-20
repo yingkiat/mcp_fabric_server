@@ -103,7 +103,7 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 echo "🚀 Starting Azure Container Apps deployment..."
-                FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):$(tag)"
+                FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):latest"
                 LOCATION="southeastasia"
                 ENVIRONMENT_NAME="$(containerAppName)-env"
                 ACR_SERVER="itapacdataacr.azurecr.io"
@@ -129,14 +129,57 @@ stages:
                 fi
                 echo "✅ Key Vault $(keyVaultName) found"
 
-                if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                # Check environment status and handle failed states
+                ENV_STATE=""
+                if az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  ENV_STATE=$(az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv)
+                  echo "Existing environment state: $ENV_STATE"
+                  
+                  if [[ "$ENV_STATE" == "ScheduledForDelete" || "$ENV_STATE" == "Failed" ]]; then
+                    echo "Environment in bad state ($ENV_STATE), deleting..."
+                    az containerapp env delete --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --yes
+                    
+                    # Wait for deletion to complete
+                    echo "Waiting for environment deletion..."
+                    for i in {1..20}; do
+                      if ! az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" &>/dev/null; then
+                        echo "✅ Environment deleted successfully"
+                        break
+                      fi
+                      echo "Waiting for deletion... ($i/20)"
+                      sleep 15
+                    done
+                    ENV_STATE=""
+                  fi
+                fi
+                
+                if [[ "$ENV_STATE" != "Succeeded" ]]; then
                   echo "Creating Container Apps environment..."
                   az containerapp env create \
                     --name "$ENVIRONMENT_NAME" \
                     --resource-group "$(resourceGroup)" \
                     --location "$LOCATION"
+                  
+                  echo "Waiting for environment to be fully provisioned..."
+                  # Wait for environment to be ready
+                  for i in {1..30}; do
+                    if az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv | grep -q "Succeeded"; then
+                      echo "✅ Environment provisioned successfully"
+                      break
+                    fi
+                    echo "Waiting for environment... ($i/30)"
+                    sleep 10
+                  done
+                  
+                  # Final check
+                  ENV_STATE=$(az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$(resourceGroup)" --query "properties.provisioningState" -o tsv)
+                  if [ "$ENV_STATE" != "Succeeded" ]; then
+                    echo "❌ Environment provisioning failed. State: $ENV_STATE"
+                    exit 1
+                  fi
                 fi
 
+                # First, create/update the Container App
                 if az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
                   echo "Updating existing Container App..."
                   az containerapp update \
@@ -145,8 +188,7 @@ stages:
                     --image "$FULL_IMAGE_NAME" \
                     --registry-server "$ACR_SERVER" \
                     --registry-username "$ACR_USERNAME" \
-                    --registry-password "$ACR_PASSWORD" \
-                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                    --registry-password "$ACR_PASSWORD"
                 else
                   echo "Creating new Container App..."
                   az containerapp create \
@@ -162,21 +204,58 @@ stages:
                     --min-replicas 1 \
                     --max-replicas 3 \
                     --cpu 1.0 \
-                    --memory 2.0Gi \
-                    --system-assigned \
-                    --env-vars KEY_VAULT_URL="$(keyVaultUrl)"
+                    --memory 2.0Gi
                 fi
 
-                echo "🔐 Configuring Key Vault access..."
-                APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
-                if [[ -n "$APP_PRINCIPAL_ID" ]]; then
-                  az role assignment create \
-                    --assignee "$APP_PRINCIPAL_ID" \
-                    --role "Key Vault Secrets User" \
-                    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
-                    --output none
-                  echo "✅ Key Vault access configured"
+                # Verify Container App was created successfully
+                if ! az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" &>/dev/null; then
+                  echo "❌ Container App creation failed"
+                  exit 1
                 fi
+                echo "✅ Container App created/updated successfully"
+
+                echo "🔐 Configuring secrets from Key Vault using Service Principal..."
+                # Retrieve secrets directly from Key Vault using Service Principal access
+                AZURE_OPENAI_KEY=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaikey" --query "value" -o tsv)
+                AZURE_OPENAI_ENDPOINT=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaiendpoint" --query "value" -o tsv)
+                AZURE_OPENAI_DEPLOYMENT=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaideployment" --query "value" -o tsv)
+                AZURE_CLIENT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientid" --query "value" -o tsv)
+                AZURE_CLIENT_SECRET=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientsecret" --query "value" -o tsv)
+                AZURE_TENANT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azuretenantid" --query "value" -o tsv)
+                FABRIC_SQL_SERVER=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "fabricsqlserver" --query "value" -o tsv)
+                FABRIC_SQL_DATABASE=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "fabricsqldatabase" --query "value" -o tsv)
+                
+                echo "✅ Retrieved all secrets from Key Vault"
+
+                # Set secrets as static values in Container App
+                az containerapp secret set \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(resourceGroup)" \
+                  --secrets \
+                    azure-openai-key="$AZURE_OPENAI_KEY" \
+                    azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT" \
+                    azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT" \
+                    azure-client-id="$AZURE_CLIENT_ID" \
+                    azure-client-secret="$AZURE_CLIENT_SECRET" \
+                    azure-tenant-id="$AZURE_TENANT_ID" \
+                    fabric-sql-server="$FABRIC_SQL_SERVER" \
+                    fabric-sql-database="$FABRIC_SQL_DATABASE"
+
+                echo "✅ Secrets configured successfully"
+
+                # Set environment variables to reference the secrets (no KEY_VAULT_URL to force env var mode)
+                az containerapp update \
+                  --name "$(containerAppName)" \
+                  --resource-group "$(resourceGroup)" \
+                  --set-env-vars \
+                    AZURE_OPENAI_KEY="secretref:azure-openai-key" \
+                    AZURE_OPENAI_ENDPOINT="secretref:azure-openai-endpoint" \
+                    AZURE_OPENAI_DEPLOYMENT="secretref:azure-openai-deployment" \
+                    AZURE_CLIENT_ID="secretref:azure-client-id" \
+                    AZURE_CLIENT_SECRET="secretref:azure-client-secret" \
+                    AZURE_TENANT_ID="secretref:azure-tenant-id" \
+                    FABRIC_SQL_SERVER="secretref:fabric-sql-server" \
+                    FABRIC_SQL_DATABASE="secretref:fabric-sql-database"
 
                 APP_URL=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "properties.configuration.ingress.fqdn" -o tsv)
                 echo "✅ Deployment complete!"

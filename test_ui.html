@@ -485,6 +485,7 @@
 
     <script>
         const API_BASE = 'http://localhost:8000';
+        const SUBSCRIPTION_KEY = '2c405c6d95ea493985aeda1985e91bf7'; // Replace with your actual key
         
         // Agentic Intelligence Test
         async function testAgentic() {
@@ -500,7 +501,10 @@
             try {
                 const response = await fetch(`${API_BASE}/mcp`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    },
                     body: JSON.stringify({ question })
                 });
                 
@@ -535,7 +539,10 @@
             try {
                 const response = await fetch(`${API_BASE}/call_tool`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    },
                     body: JSON.stringify({ tool, args })
                 });
                 
@@ -664,7 +671,11 @@
             clearResponse('schemaResponse');
             
             try {
-                const response = await fetch(`${API_BASE}/list_tools`);
+                const response = await fetch(`${API_BASE}/list_tools`, {
+                    headers: { 
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    }
+                });
                 const result = await response.json();
                 showResponse('schemaResponse', result, response.ok);
             } catch (error) {
@@ -878,7 +889,11 @@
         
         async function loadPromptList() {
             try {
-                const response = await fetch(`${API_BASE}/prompts`);
+                const response = await fetch(`${API_BASE}/prompts`, {
+                    headers: { 
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    }
+                });
                 const data = await response.json();
                 
                 const promptList = document.getElementById('promptList');
@@ -904,7 +919,11 @@
                 });
                 event.target.classList.add('selected');
                 
-                const response = await fetch(`${API_BASE}/prompts/${promptName}`);
+                const response = await fetch(`${API_BASE}/prompts/${promptName}`, {
+                    headers: { 
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    }
+                });
                 const data = await response.json();
                 
                 currentPrompt = promptName;
@@ -939,6 +958,7 @@
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
                     },
                     body: JSON.stringify({
                         module_name: currentPrompt,
@@ -969,7 +989,11 @@
             if (!currentPrompt) return;
             
             try {
-                const response = await fetch(`${API_BASE}/prompts/${currentPrompt}/backups`);
+                const response = await fetch(`${API_BASE}/prompts/${currentPrompt}/backups`, {
+                    headers: { 
+                        'Ocp-Apim-Subscription-Key': SUBSCRIPTION_KEY
+                    }
+                });
                 const data = await response.json();
                 
                 if (data.backups.length === 0) {
