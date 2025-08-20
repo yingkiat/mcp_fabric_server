@@ -103,7 +103,7 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 echo "🚀 Starting Azure Container Apps deployment..."
-                FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):$(tag)"
+                FULL_IMAGE_NAME="itapacdataacr.azurecr.io/$(imageRepository):latest"
                 LOCATION="southeastasia"
                 ENVIRONMENT_NAME="$(containerAppName)-env"
                 ACR_SERVER="itapacdataacr.azurecr.io"
@@ -205,7 +205,6 @@ stages:
                     --max-replicas 3 \
                     --cpu 1.0 \
                     --memory 2.0Gi \
-                    --system-assigned
                 fi
 
                 # Verify Container App was created successfully
@@ -215,55 +214,39 @@ stages:
                 fi
                 echo "✅ Container App created/updated successfully"
 
-                echo "🔐 Configuring Key Vault access..."
-                APP_PRINCIPAL_ID=$(az containerapp show --name "$(containerAppName)" --resource-group "$(resourceGroup)" --query "identity.principalId" -o tsv)
-                if [[ -n "$APP_PRINCIPAL_ID" ]]; then
-                  echo "Container App Principal ID: $APP_PRINCIPAL_ID"
-                  
-                  az role assignment create \
-                    --assignee "$APP_PRINCIPAL_ID" \
-                    --role "Key Vault Secrets User" \
-                    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroup)/providers/Microsoft.KeyVault/vaults/$(keyVaultName)" \
-                    --output none 2>/dev/null || echo "Role assignment may already exist"
-                  echo "✅ Key Vault role assignment completed"
-                  
-                  # Wait longer for role assignment to propagate
-                  echo "Waiting for Key Vault permissions to propagate..."
-                  sleep 60
-                  
-                  # Verify Key Vault access works by testing secret retrieval
-                  echo "🔍 Verifying Key Vault access..."
-                  for i in {1..10}; do
-                    if az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaikey" --query "value" -o tsv >/dev/null 2>&1; then
-                      echo "✅ Key Vault access verified - secrets are accessible"
-                      break
-                    fi
-                    echo "Waiting for Key Vault access... ($i/10)"
-                    sleep 15
-                  done
-                fi
+                echo "🔐 Configuring secrets from Key Vault using Service Principal..."
+                # Retrieve secrets directly from Key Vault using Service Principal access
+                AZURE_OPENAI_KEY=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaikey" --query "value" -o tsv)
+                AZURE_OPENAI_ENDPOINT=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaiendpoint" --query "value" -o tsv)
+                AZURE_OPENAI_DEPLOYMENT=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureopenaideployment" --query "value" -o tsv)
+                AZURE_CLIENT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientid" --query "value" -o tsv)
+                AZURE_CLIENT_SECRET=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azureclientsecret" --query "value" -o tsv)
+                AZURE_TENANT_ID=$(az keyvault secret show --vault-name "$(keyVaultName)" --name "azuretenantid" --query "value" -o tsv)
+                
+                echo "✅ Retrieved all secrets from Key Vault"
 
-                echo "🔐 Configuring secrets from Key Vault..."
-                # Update Container App with Key Vault secret references using actual secret names
+                # Set secrets as static values in Container App
                 az containerapp secret set \
                   --name "$(containerAppName)" \
                   --resource-group "$(resourceGroup)" \
                   --secrets \
-                    azure-openai-key="keyvaultref:$(keyVaultUrl)secrets/azureopenaikey,identityref:system" \
-                    azure-openai-endpoint="keyvaultref:$(keyVaultUrl)secrets/azureopenaiendpoint,identityref:system" \
-                    azure-client-id="keyvaultref:$(keyVaultUrl)secrets/azureclientid,identityref:system" \
-                    azure-client-secret="keyvaultref:$(keyVaultUrl)secrets/azureclientsecret,identityref:system" \
-                    azure-tenant-id="keyvaultref:$(keyVaultUrl)secrets/azuretenantid,identityref:system"
+                    azure-openai-key="$AZURE_OPENAI_KEY" \
+                    azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT" \
+                    azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT" \
+                    azure-client-id="$AZURE_CLIENT_ID" \
+                    azure-client-secret="$AZURE_CLIENT_SECRET" \
+                    azure-tenant-id="$AZURE_TENANT_ID"
 
-                # Set environment variables to reference the secrets
+                echo "✅ Secrets configured successfully"
+
+                # Set environment variables to reference the secrets (no KEY_VAULT_URL to force env var mode)
                 az containerapp update \
                   --name "$(containerAppName)" \
                   --resource-group "$(resourceGroup)" \
                   --set-env-vars \
-                    KEY_VAULT_URL="$(keyVaultUrl)" \
                     AZURE_OPENAI_KEY="secretref:azure-openai-key" \
                     AZURE_OPENAI_ENDPOINT="secretref:azure-openai-endpoint" \
-                    AZURE_OPENAI_DEPLOYMENT="gpt-4o" \
+                    AZURE_OPENAI_DEPLOYMENT="secretref:azure-openai-deployment" \
                     AZURE_CLIENT_ID="secretref:azure-client-id" \
                     AZURE_CLIENT_SECRET="secretref:azure-client-secret" \
                     AZURE_TENANT_ID="secretref:azure-tenant-id"
