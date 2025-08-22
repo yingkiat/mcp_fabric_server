@@ -41,7 +41,7 @@ Power Apps can't directly call APIM with subscription keys, so create a custom c
 - **Summary**: `Ask business question with AI reasoning`
 - **Description**: `Submit natural language questions for intelligent analysis`
 - **Verb**: `POST`
-- **URL**: `/mcp`
+- **URL**: `/mcp-powerapps`
 
 **Request Body:**
 ```json
@@ -72,6 +72,8 @@ Power Apps can't directly call APIM with subscription keys, so create a custom c
 ```
 
 **Note:** `classification` and `tool_chain_results` are defined as strings because PowerApps Custom Connector UI doesn't support nested object types. These contain JSON strings that need to be parsed in PowerApps using `ParseJSON()`.
+
+**Important:** Use the `/mcp-powerapps` endpoint (not `/mcp`) for PowerApps integration. This endpoint returns the complex objects as JSON strings instead of nested objects, making them compatible with PowerApps Custom Connector limitations.
 
 #### Operation 2: List Available Tools
 - **Operation ID**: `ListTools`

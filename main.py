@@ -273,12 +273,19 @@ def mcp_powerapps_endpoint(request: AgenticRequest, http_request: Request):
         results = execute_tool_chain(request.question, classification, request_id)
         
         import json
+        from decimal import Decimal
+        
+        # Custom JSON encoder to handle Decimal objects
+        def decimal_encoder(obj):
+            if isinstance(obj, Decimal):
+                return str(obj)
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
         
         return {
             "question": request.question,
             "response": results["final_response"],
-            "classification": json.dumps(results["classification"]),
-            "tool_chain_results": json.dumps(results["tool_results"]),
+            "classification": json.dumps(results["classification"], default=decimal_encoder),
+            "tool_chain_results": json.dumps(results["tool_results"], default=decimal_encoder),
             "request_id": request_id
         }
     except Exception as e:
