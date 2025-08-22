@@ -111,13 +111,18 @@ git commit -m "Deploy to Azure Container Apps"
 git push origin main
 
 # Pipeline automatically:
-# 1. Builds Docker image and pushes to ACR
-# 2. Deploys to Azure Container Apps with Key Vault integration
-# 3. Tests deployment health
+# 1. Builds Docker image and pushes to ACR with :latest tag
+# 2. Deploys to Azure Container Apps with Service Principal Key Vault access
+# 3. Injects secrets as static environment variables for reliability
+# 4. Configures auto-scaling (1-3 replicas) and health checks
+# 5. Tests deployment health and verifies endpoints
 
-# Test deployed endpoints (after pipeline completes)
-curl https://fabric-mcp-agent.azurecontainerapps.io/list_tools
-curl -X POST https://fabric-mcp-agent.azurecontainerapps.io/mcp -H "Content-Type: application/json" -d '{"question": "tell me about products"}'
+# Test deployed endpoints via Azure API Management (after pipeline completes)
+curl -H "Ocp-Apim-Subscription-Key: YOUR_KEY" https://m3apidwhsd1.azure-api.net/aca/list_tools
+curl -X POST -H "Content-Type: application/json" -H "Ocp-Apim-Subscription-Key: YOUR_KEY" https://m3apidwhsd1.azure-api.net/aca/mcp -d '{"question": "tell me about products"}'
+
+# Access Web UI through APIM gateway
+open https://m3apidwhsd1.azure-api.net/aca/
 ```
 
 ## MCP Tool Specifications
@@ -227,7 +232,7 @@ Domain-specific business contexts and expertise:
 
 ## Current Implementation Status
 
-**✅ PRODUCTION MVP COMPLETE**:
+**✅ PRODUCTION DEPLOYMENT COMPLETE**:
 - FastAPI server with full MCP compliance (`/list_tools`, `/call_tool`, `/mcp`) 
 - All 4 MCP tools fully implemented with error handling and logging
 - **🆕 Multi-stage agentic execution** with discovery → analysis → evaluation workflows
@@ -239,11 +244,15 @@ Domain-specific business contexts and expertise:
 - **🆕 Session-based logging system** - complete session traces for easy debugging
 - Azure OpenAI caching optimization with robust JSON parsing
 
-**🚀 Ready for Production Extension**:
-- **🆕 Scalable intent template system** (domain-agnostic execution patterns)
-- **🆕 Extensible persona architecture** (easy addition of new business domains)
-- **🆕 Token optimization with data deduplication** (targeting 50-80% cost reduction)
-- **🆕 Session-based debugging** with complete timeline traces in `logs/sessions/`
+**🚀 AZURE CONTAINER APPS DEPLOYMENT**:
+- **🆕 Production CI/CD Pipeline** - Azure DevOps with automated build and deployment
+- **🆕 Azure Container Registry integration** - ACR Tasks with latest tag strategy
+- **🆕 Key Vault secrets management** - Service Principal authentication for reliable access
+- **🆕 Azure API Management gateway** - Enterprise security with subscription key auth
+- **🆕 Multi-environment UI support** - Dynamic endpoint switching (local/remote)
+- **🆕 Power Apps integration ready** - Custom connector documentation and configuration
+- **🆕 Auto-scaling infrastructure** - 1-3 replicas with CPU/memory optimization
+- **🆕 Production monitoring** - Health checks and deployment verification
 
 ## Configuration
 
@@ -263,6 +272,16 @@ AZURE_TENANT_ID=your-azure-tenant-id
 AZURE_OPENAI_KEY=your-openai-key
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
+
+# 🆕 Multi-Environment API Configuration
+# LOCAL MODE: Run MCP server locally (python main.py)
+# FABRIC_MCP_API_URL=http://localhost:8000
+
+# REMOTE MODE: Use deployed Azure Container App via APIM
+FABRIC_MCP_API_URL=https://m3apidwhsd1.azure-api.net/aca
+
+# Azure API Management Subscription Key (required for APIM access)
+APIM_SUBSCRIPTION_KEY=your-apim-subscription-key
 ```
 
 ## Security Architecture

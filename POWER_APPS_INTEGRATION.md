@@ -62,13 +62,16 @@ Power Apps can't directly call APIM with subscription keys, so create a custom c
 {
   "type": "object",
   "properties": {
-    "execution_strategy": {"type": "string"},
-    "business_answer": {"type": "string"},
-    "tool_chain_results": {"type": "object"},
-    "session_id": {"type": "string"}
+    "question": {"type": "string"},
+    "response": {"type": "string"},
+    "classification": {"type": "string"},
+    "tool_chain_results": {"type": "string"},
+    "request_id": {"type": "string"}
   }
 }
 ```
+
+**Note:** `classification` and `tool_chain_results` are defined as strings because PowerApps Custom Connector UI doesn't support nested object types. These contain JSON strings that need to be parsed in PowerApps using `ParseJSON()`.
 
 #### Operation 2: List Available Tools
 - **Operation ID**: `ListTools`
@@ -108,15 +111,20 @@ Power Apps can't directly call APIM with subscription keys, so create a custom c
 #### Expected Response
 ```json
 {
-  "execution_strategy": "multi_stage",
-  "business_answer": "Product MRH-011C contains the following components...",
+  "question": "tell me the components in MRH-011C",
+  "response": "Product MRH-011C contains the following components...",
+  "classification": {
+    "persona": "product_planning",
+    "execution_strategy": "multi_stage"
+  },
   "tool_chain_results": {
     "stage3_evaluation": {
       "business_answer": "...",
       "key_findings": [...],
       "recommended_action": "..."
     }
-  }
+  },
+  "request_id": "req_123456789"
 }
 ```
 
@@ -163,7 +171,7 @@ HtmlText:
     IsEmpty(aiResponse),
     "Ask a question to see AI analysis...",
     "<h3>Business Analysis</h3><p>" & 
-    aiResponse.tool_chain_results.stage3_evaluation.business_answer & 
+    aiResponse.response & 
     "</p>"
   )
 ```
@@ -172,7 +180,7 @@ HtmlText:
 ```powerfx
 // Gallery Control
 Name: galKeyFindings
-Items: aiResponse.tool_chain_results.stage3_evaluation.key_findings
+Items: ParseJSON(aiResponse.tool_chain_results).stage3_evaluation.key_findings
 Text: ThisItem.Value
 ```
 
@@ -188,14 +196,49 @@ Text:
     If(
       !IsEmpty(errorMessage),
       errorMessage,
-      ""
+      If(
+        IsError(ParseJSON(aiResponse.classification)) Or IsError(ParseJSON(aiResponse.tool_chain_results)),
+        "Error parsing response data. Please try again.",
+        ""
+      )
     )
   )
 Visible: !IsEmpty(lblError.Text)
 Color: Color.Red
 ```
 
-### 4. Loading State
+### 4. JSON Parsing Helpers
+
+Since PowerApps Custom Connector treats complex objects as strings, you need to parse them:
+
+```powerfx
+// Helper function to safely parse classification
+Set(
+  classificationData,
+  If(
+    IsError(ParseJSON(aiResponse.classification)),
+    {persona: "unknown", execution_strategy: "single_stage"},
+    ParseJSON(aiResponse.classification)
+  )
+);
+
+// Helper function to safely parse tool results
+Set(
+  toolResultsData,
+  If(
+    IsError(ParseJSON(aiResponse.tool_chain_results)),
+    {},
+    ParseJSON(aiResponse.tool_chain_results)
+  )
+);
+
+// Use parsed data in your controls
+Text: classificationData.persona
+Text: toolResultsData.stage3_evaluation.business_answer
+Items: toolResultsData.stage3_evaluation.key_findings
+```
+
+### 5. Loading State
 
 ```powerfx
 // Loading Spinner
@@ -226,12 +269,18 @@ btnSubmit.DisplayMode:
 ### 1. Multi-Stage Results Display
 ```powerfx
 // Display different stages of AI reasoning
-If(
-  aiResponse.execution_strategy = "multi_stage",
-  // Show discovery → analysis → evaluation flow
-  ShowMultiStageResults(aiResponse.tool_chain_results),
-  // Show simple single-stage results
-  ShowSimpleResults(aiResponse.tool_chain_results)
+With(
+  {
+    classificationObj: ParseJSON(aiResponse.classification),
+    toolResultsObj: ParseJSON(aiResponse.tool_chain_results)
+  },
+  If(
+    classificationObj.execution_strategy = "multi_stage",
+    // Show discovery → analysis → evaluation flow
+    ShowMultiStageResults(toolResultsObj),
+    // Show simple single-stage results
+    ShowSimpleResults(toolResultsObj)
+  )
 )
 ```
 
@@ -244,8 +293,8 @@ Set(
     conversationHistory,
     {
       Question: txtQuestion.Text,
-      Answer: aiResponse.business_answer,
-      SessionId: aiResponse.session_id,
+      Answer: aiResponse.response,
+      SessionId: aiResponse.request_id,
       Timestamp: Now()
     }
   )
@@ -256,12 +305,15 @@ Set(
 ```powerfx
 // Export results to Excel/SharePoint
 Export(
-  Table({
-    Question: txtQuestion.Text,
-    BusinessAnswer: aiResponse.business_answer,
-    KeyFindings: JSON(aiResponse.tool_chain_results.stage3_evaluation.key_findings),
-    Confidence: aiResponse.tool_chain_results.stage3_evaluation.supporting_data.confidence
-  }),
+  With(
+    {toolResults: ParseJSON(aiResponse.tool_chain_results)},
+    Table({
+      Question: txtQuestion.Text,
+      BusinessAnswer: aiResponse.response,
+      KeyFindings: JSON(toolResults.stage3_evaluation.key_findings),
+      Confidence: toolResults.stage3_evaluation.supporting_data.confidence
+    })
+  ),
   "MCP_Analysis_" & Text(Now(), "yyyymmdd_hhmmss") & ".xlsx"
 )
 ```
@@ -290,7 +342,11 @@ Export(
 1. **401 Unauthorized**: Check subscription key
 2. **403 Forbidden**: Verify APIM CORS settings
 3. **Timeout**: Increase Power Apps timeout settings
-4. **Schema Errors**: Validate request/response formats
+4. **Property type mismatch "Expected: object, Actual: string"**: 
+   - This occurs when PowerApps expects object but receives string
+   - **Solution**: Set `classification` and `tool_chain_results` as `string` type in Custom Connector schema
+   - Use `ParseJSON()` in PowerApps formulas to access nested properties
+5. **Schema Errors**: Validate request/response formats match documentation
 
 ### Debug Tips
 
