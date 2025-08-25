@@ -2,7 +2,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 import time
 import json
@@ -98,10 +98,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve the test UI
+# Serve the test UI with dynamic API URL
 @app.get("/")
 def serve_ui():
-    return FileResponse("test_ui.html")
+    # Read the HTML template
+    with open("test_ui.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    
+    # Get API URL from environment or default to current server
+    api_url = os.getenv("FABRIC_MCP_API_URL", "http://localhost:8000")
+    subscription_key = os.getenv("APIM_SUBSCRIPTION_KEY", "YOUR_SUBSCRIPTION_KEY_HERE")
+    
+    # Replace the hardcoded API_BASE and subscription key with dynamic values
+    html_content = html_content.replace(
+        "const API_BASE = 'http://localhost:8000';",
+        f"const API_BASE = '{api_url}';"
+    )
+    html_content = html_content.replace(
+        "const SUBSCRIPTION_KEY = 'YOUR_SUBSCRIPTION_KEY_HERE';",
+        f"const SUBSCRIPTION_KEY = '{subscription_key}';"
+    )
+    
+    return HTMLResponse(content=html_content)
 
 class QueryRequest(BaseModel):
     question: str
@@ -239,6 +257,39 @@ def mcp_agentic_endpoint(request: AgenticRequest, http_request: Request):
         }
     except Exception as e:
         tracker.log_error(request_id, e, "mcp_endpoint")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/mcp-powerapps")
+def mcp_powerapps_endpoint(request: AgenticRequest, http_request: Request):
+    """PowerApps-optimized agentic reasoning endpoint with stringified JSON objects"""
+    request_id = getattr(http_request.state, 'request_id', generate_request_id())
+    
+    try:
+        # Classify intent and determine tool chain
+        classification = classify_intent(request.question, request_id)
+        tracker.log_classification(request_id, classification)
+        
+        # Execute the tool chain
+        results = execute_tool_chain(request.question, classification, request_id)
+        
+        import json
+        from decimal import Decimal
+        
+        # Custom JSON encoder to handle Decimal objects
+        def decimal_encoder(obj):
+            if isinstance(obj, Decimal):
+                return str(obj)
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        
+        return {
+            "question": request.question,
+            "response": results["final_response"],
+            "classification": json.dumps(results["classification"], default=decimal_encoder),
+            "tool_chain_results": json.dumps(results["tool_results"], default=decimal_encoder),
+            "request_id": request_id
+        }
+    except Exception as e:
+        tracker.log_error(request_id, e, "mcp_powerapps_endpoint")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/prompts")

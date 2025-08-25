@@ -20,32 +20,70 @@ The Fabric MCP Agent is a production-ready two-layer system that bridges busines
 - **Logging Middleware** (Request tracking and performance monitoring)
 
 ### Layer 2: Agentic Reasoning Engine
-**Purpose**: Intelligent business context interpretation and multi-tool orchestration.
+**Purpose**: Intelligent business context interpretation with multi-stage workflow execution.
 
 **Components**:
 - **Intent Router** (`agentic_layer/routing/intent_router.py`)
-- **Prompt Modules** (`agentic_layer/prompts/*.md`)
+- **Intent Templates** (`agentic_layer/prompts/intent/`)
+- **Persona Modules** (`agentic_layer/prompts/personas/`)
 - **Session Management** (Request tracking and context preservation)
 
 ## 🔄 Request Flow Architecture
 
-### Business Question Session Flow
+### 🆕 Multi-Stage Execution Strategy
+The system now supports three execution strategies based on query complexity:
 
+1. **Single-Stage**: Simple queries requiring one SQL execution
+2. **Multi-Stage**: Complex queries requiring discovery → analysis → evaluation  
+3. **Iterative**: Advanced queries with refinement loops (future)
+
+### Multi-Stage Business Question Flow
 ```mermaid
 graph TD
-    A[User Question] --> B[Logging Middleware]
-    B --> C[Intent Classification]
-    C --> D[Prompt Module Selection]
-    D --> E[Tool Chain Determination]
-    E --> F[Tool Execution Pipeline]
-    F --> G[Response Assembly]
-    G --> H[Performance Logging]
-    H --> I[Business Answer]
+    A[User Question] --> B[Intent Classification]
+    B --> C{Execution Strategy}
     
-    C --> J[Azure OpenAI API Call 1]
-    F --> K[Azure OpenAI API Call 2]
-    F --> L[Fabric Database Query]
-    F --> M[Result Processing]
+    C -->|Multi-Stage| D[Stage 1: Discovery]
+    D --> E[SQL Generation + Execution]
+    E --> F[AI Intermediate Processing]
+    F --> G[Stage 2: Analysis]
+    G --> H[SQL Generation + Execution]
+    H --> I[Stage 3: Evaluation]
+    I --> J[Pure AI Business Analysis]
+    J --> K[Final Response]
+    
+    C -->|Single-Stage| L[Standard Tool Chain]
+    L --> M[SQL + Summarize + Visualize]
+    M --> K
+    
+    subgraph "Stage Breakdown"
+        N["Stage 1: Find candidates<br/>🎯 Discovery Query"]
+        O["Stage 2: Get details<br/>📊 Analysis Query"] 
+        P["Stage 3: Business insights<br/>🧠 No SQL - Pure Analysis"]
+    end
+```
+
+### 🆕 Competitive Replacement Flow (Two-Stage AI Matching)
+```mermaid
+graph TD
+    A["User: Replace competitor kit"] --> B[Intent: spt_sales_rep]
+    B --> C[Stage 1: AI Semantic Matching]
+    C --> D[Extract Keywords from Competitor Description]
+    D --> E[Query 1: Find Similar Products]
+    E --> F[AI Evaluates Product Matches]
+    F --> G[Select Best Equivalent Parts]
+    G --> H[Stage 2: Pricing & Kit Analysis]
+    H --> I[Query 2: Get Pricing & Components]
+    I --> J[Generate Competitive Quote]
+    J --> K[Business Response with Savings]
+    
+    subgraph "Example: BD Luer-Lock Syringe 2.5mL"
+        L["Keywords: syringe, 2.5, ML, lock"] 
+        M["SQL: LIKE '%シリンジ%' AND '%2.5%'"]
+        N["Match: ｼﾘﾝｼﾞ2.5ML ﾛｯｸ"]
+        O["Price: ¥850 vs Competitor ¥920"]
+        P["Savings: ¥70 (7.6% better)"]
+    end
 ```
 
 ### Detailed Session Phases
@@ -135,6 +173,12 @@ graph TD
 def classify_intent(user_question: str, request_id: str = None) -> Dict[str, Any]
 ```
 
+**🆕 Competitive Replacement Intent Detection**:
+- **Trigger keywords**: "competitor quoted", "replace [Brand Name]", "equivalent to", "match this quote"
+- **Special handling**: Routes to `spt_sales_rep.md` for two-stage processing
+- **Japanese context**: Handles hiragana/katakana product descriptions
+- **Auto-pricing**: Integrates QAD ERP pricing tables (JPNPROdb_nqpr_mstr, JPNPROdb_sod_det)
+
 **Classification Logic**:
 - Analyzes user question against available prompt modules
 - Returns JSON with intent, confidence, tool chain, reasoning
@@ -152,26 +196,37 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
 - Passes enhanced context between tools
 - Assembles final business response
 
-#### Prompt Modules (`agentic_layer/prompts/`)
+#### 🆕 Intent Templates (`agentic_layer/prompts/intent/`)
 
-**Current Module**: `product_planning.md`
-- **Domain**: Product master data and component analysis
-- **Tables**: JPNPROdb_ps_mstr, JPNPROdb_pt_mstr
-- **Use Cases**: Product lookup, component analysis, specifications
-- **Query Patterns**: Pre-defined question templates
-- **SQL Guidelines**: Table-specific joins and filters
+**Generic Multi-Stage Templates**:
+- **`stage1_discovery.md`**: Discovery query patterns and objectives
+- **`stage2_analysis.md`**: Detailed analysis query strategies  
+- **`stage3_evaluation.md`**: Business evaluation and insight generation
 
-**Module Structure**:
+**Template Purpose**: Domain-agnostic frameworks that work with any persona context.
+
+#### Persona Modules (`agentic_layer/prompts/personas/`)
+
+**Current Personas**:
+- **`product_planning.md`**: Product master data and component analysis
+- **`spt_sales_rep.md`**: Competitive replacement and pricing analysis
+
+**Persona Structure**:
 ```markdown
 # Role & Context
-## Key Tables
+## Key Tables & Schema
 ## Primary Use Cases  
-## Query Patterns
-## Tool Chain Strategy
-## SQL Generation Guidelines
-## Response Format
-## Business Context
+## Query Patterns & Examples
+## Business Logic & Rules
+## SQL Guidelines & Joins
+## Response Formatting
+## Domain-Specific Context
 ```
+
+**🆕 Multi-Stage Integration**: 
+- Personas provide domain knowledge and table context
+- Intent templates provide generic execution patterns
+- Combined during runtime for context-aware multi-stage execution
 
 ### Database Connector (`connectors/fabric_dw.py`)
 
@@ -269,23 +324,44 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
 
 ## 📈 Performance Characteristics
 
-### Response Times (Production Measurements)
+### 🆕 Multi-Stage Performance (Production Measurements)
+**Total Execution Time**: 40.7 seconds average
+
+| Stage | Duration | Operations | Percentage |
+|-------|----------|------------|------------|
+| **Intent Classification** | 3.4s | LLM routing decision | 8.3% |
+| **Stage 1: Discovery** | 14.4s | SQL generation + execution | 35.4% |
+| **Stage 2: Analysis** | 15.7s | SQL generation + execution | 38.5% |
+| **Stage 3: Evaluation** | 7.1s | Pure LLM business analysis | 17.4% |
+
+**Key Insights**:
+- **SQL operations dominate**: 30.1s (74%) of total time
+- **Database queries execute fast**: ~0.2s actual execution
+- **LLM calls are efficient**: 10.5s combined (26%)
+- **Stage 3 eliminates SQL**: Pure analysis phase
+
+### Single-Stage Performance (Legacy)
 - **Average Session**: 12-15 seconds end-to-end
 - **95th Percentile**: 25-30 seconds
-- **Cached Responses**: 2-3 seconds (Azure OpenAI caching)
 - **Database Queries**: 200ms-2s depending on complexity
 
 ### Resource Usage
-- **API Calls per Question**: 2.0 average (classification + SQL generation)
-- **Token Usage**: 26,000 average per business question
-- **Cost per Question**: ~$0.13 (GPT-4o pricing)
+- **Multi-Stage API Calls**: 4.0 average (classification + stage1 + stage2 + stage3)
+- **Single-Stage API Calls**: 2.0 average (classification + SQL generation)
+- **Token Usage**: 35,000+ average per multi-stage question
+- **Cost per Multi-Stage Question**: ~$0.18 (GPT-4o pricing)
 - **Memory Footprint**: <100MB base application
 
-### Optimization Features
-- **Smart Tool Chaining**: AI skips unnecessary metadata calls
-- **Response Caching**: Identical questions use cached responses
-- **Query Optimization**: Context-aware SQL generation
-- **Connection Pooling**: Efficient database resource usage
+### 🚀 Optimization Opportunities
+**High Impact**:
+- **SQL Query Optimization**: Target 50% reduction in Stage 1 & 2 times
+- **Database Indexing**: Add indexes for common query patterns
+- **Parallel Processing**: Run summarize_results during Stage 3 evaluation
+
+**Medium Impact**:
+- **LLM Response Caching**: Cache persona contexts and patterns
+- **Connection Pooling**: Reduce database connection overhead
+- **Streaming Responses**: Return Stage 1 results immediately
 
 ## 🔄 Data Flow Patterns
 

@@ -47,11 +47,14 @@ Write a correct, safe T-SQL query that answers the question.
 - Return ONLY the SQL query, nothing else.
 """
     
+    # Import the model params helper
+    from agentic_layer.routing.intent_router import get_model_params
+    model_params = get_model_params(AZURE_OPENAI_DEPLOYMENT, 512, 0)
+    
     response = client.chat.completions.create(
         model=AZURE_OPENAI_DEPLOYMENT,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        max_tokens=512,
+        **model_params
     )
     
     # Log API call

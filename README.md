@@ -1,18 +1,26 @@
 # fabric-mcp-agent
 
-**Production-Ready MVP** - A complete two-layer system combining an MCP-compliant server with agentic AI reasoning for Microsoft Fabric Data Warehouse access.
+**🆕 Enhanced MVP with Multi-Stage Intelligence** - A complete two-layer system combining an MCP-compliant server with advanced multi-stage agentic AI reasoning for Microsoft Fabric Data Warehouse access.
 
-## 🎯 MVP Status: **COMPLETE** ✅
+## 🎯 MVP Status: **ENHANCED** ✅
 
-This system is fully functional and ready for production use with comprehensive logging, performance tracking, and business-optimized responses.
+**🆕 Major Update**: Now features intelligent multi-stage execution with discovery → analysis → evaluation workflows for complex business intelligence queries.
 
 ## 🔷 Architecture Overview
 
 ### Layer 1: Fabric DW MCP Server
 Standards-compliant MCP server with 4 complete tools providing clean abstractions over Fabric Data Warehouse operations with full Azure AD authentication.
 
-### Layer 2: Agentic Reasoning Layer  
-Production-ready intelligent routing system that interprets business intent, selects appropriate prompt modules, and dynamically chains MCP tools to deliver enriched answers with formatted results and business insights.
+### Layer 2: **🆕 Multi-Stage Agentic Reasoning Engine**
+Advanced intelligent system with **3 execution strategies**:
+- **Single-Stage**: Simple queries → Standard tool chain
+- **🆕 Multi-Stage**: Complex queries → Discovery → Analysis → Evaluation
+- **🆕 Iterative**: Advanced queries → Refinement loops (future)
+
+**🆕 Separation of Concerns Architecture**:
+- **Intent Templates**: Domain-agnostic execution patterns (`agentic_layer/prompts/intent/`)
+- **Persona Modules**: Business domain expertise (`agentic_layer/prompts/personas/`)  
+- **Runtime Integration**: Dynamic combination for context-aware execution
 
 ## 🚀 Production Features
 
@@ -22,35 +30,60 @@ Production-ready intelligent routing system that interprets business intent, sel
 - **`summarize_results`**: Generate business-friendly summaries with actionable insights
 - **`generate_visualization`**: Create formatted data tables and chart configurations
 
-### ✅ Advanced Agentic Intelligence
-- **Intent Classification**: Smart routing to domain-specific prompt modules with 95%+ accuracy
-- **Prompt-Driven SQL**: Context-aware SQL generation using business domain knowledge
-- **Tool Chaining**: Dynamic multi-tool orchestration for comprehensive business responses
+### ✅ **🆕 Advanced Multi-Stage Intelligence**
+- **Intelligent Execution Strategy**: Automatic selection between single-stage and multi-stage workflows
+- **🆕 3-Stage Discovery Process**: Discovery → Analysis → Evaluation with AI-driven transitions
+- **🆕 Domain-Agnostic Templates**: Reusable execution patterns that work across all business domains
+- **🆕 Persona-Driven Context**: Business expertise modules for domain-specific knowledge
+- **🆕 Pure Business Analysis**: Stage 3 provides structured insights without SQL execution
+- **Enhanced JSON Parsing**: Robust handling of complex business responses with intelligent fallbacks
 - **Azure OpenAI Caching**: Automatic response optimization for repeated queries
 
 ### ✅ Enterprise Features
-- **Comprehensive Logging**: JSON-structured logs with request tracking and performance metrics
-- **Performance Monitoring**: Real-time dashboard with session-based analytics
+- **🆕 Token Usage Optimization**: Data compression reducing token usage by 50-80%
+- **🆕 Session-Based Logging**: Complete session traces in `logs/sessions/` for easy debugging
+- **Performance Monitoring**: Real-time cost tracking and compression statistics
 - **Error Tracking**: Full error context with automated recovery mechanisms
 - **Security**: Azure AD authentication with read-only database access
 
-## 🔄 Query Formation Flow
+## 🔄 **🆕 Multi-Stage Execution Flow**
 
-**How Fabric DW queries are formed:**
+**Enhanced intelligent query processing with adaptive execution strategies:**
 
-1. **User Question** → Intent Router classifies intent and selects prompt module
-2. **Prompt Module Integration** → Loads domain-specific context (e.g., `product_planning.md`)
-3. **LLM SQL Generation** → Creates T-SQL using enhanced prompts with table schemas and business context
-
+### Single-Stage Flow (Simple Queries)
 ```
-User: "What products are active?"
+User: "Show me specifications for MRH-011C"
 ↓
-Intent Router → product_planning.md
-↓ 
-Enhanced Prompt: "[Context from product_planning module + User question]"
+Intent Classification → Single-Stage Strategy
 ↓
-LLM → SELECT * FROM JPNPROdb_ps_mstr WHERE status = 'active'
+Load Persona: product_planning.md
+↓
+SQL Generation + Execution → Results
 ```
+
+### **🆕 Multi-Stage Flow (Complex Queries)**
+```
+User: "Replace BD Luer-Lock Syringe 2.5mL with equivalent domestic product and pricing"
+↓
+Intent Classification → Multi-Stage Strategy + spt_sales_rep persona
+↓
+Stage 1: Discovery
+  Template: stage1_discovery.md + Persona Context
+  → Find candidate products matching criteria
+↓
+AI Intermediate Processing
+  → Analyze Stage 1 results → Select best matches
+↓
+Stage 2: Analysis  
+  Template: stage2_analysis.md + Selected Candidates
+  → Get detailed pricing and specifications
+↓
+Stage 3: Evaluation
+  Template: stage3_evaluation.md + All Previous Data
+  → Pure business analysis (NO SQL) → Structured insights
+```
+
+**🆕 Key Innovation**: Domain-agnostic templates + business personas = context-aware execution
 
 ## 📋 API Endpoints
 
@@ -85,42 +118,92 @@ curl -X POST http://localhost:8000/call_tool -H "Content-Type: application/json"
 -d '{"tool": "run_sql_query", "args": {"question": "Show me active products"}}'
 ```
 
-### 4. Test Agentic Intelligence (Recommended)
+### 4. **🆕 Test Multi-Stage Intelligence (Recommended)**
 ```bash
-# Full reasoning with intent classification and tool chaining
+# Simple query (single-stage execution)
 curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
 -d '{"question": "tell me the components in MRH-011C"}'
+
+# 🆕 Complex query (multi-stage execution)
+curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
+-d '{"question": "Replace BD Luer-Lock Syringe 2.5mL with equivalent domestic product and pricing"}'
+
+# 🆕 Multi-stage product analysis
+curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
+-d '{"question": "Analyze components and pricing for MRH-011C and recommend optimization opportunities"}'
 ```
 
-### 5. Access the Web UI
+### 5. **🆕 Session Debugging & Monitoring**
+```bash
+# View recent session logs with optimization stats
+python view_session.py
+
+# View detailed session trace (compression, tokens, cost)
+python view_session.py 1
+
+# List all session files
+ls logs/sessions/
+```
+
+### 6. Access the Web UI
 ```bash
 # Open your browser and visit:
 http://localhost:8000
 ```
 
-## 🎯 Example Responses
+## 🎯 **🆕 Enhanced Response Examples**
 
-The agentic `/mcp` endpoint returns enriched responses:
+### Single-Stage Response (Simple Query)
 ```json
 {
-  "question": "tell me the components in MRH-011C",
-  "response": "**Answer**: Found 8 components for product MRH-011C...",
-  "classification": {"intent": "product_planning", "confidence": 0.95},
+  "classification": {
+    "intent": "product_specification_lookup",
+    "persona": "product_planning", 
+    "execution_strategy": "single_stage",
+    "confidence": 0.95
+  },
   "tool_chain_results": {
-    "get_metadata": {...},
     "run_sql_query": {"results": [...]},
     "summarize_results": {...}
-  }
+  },
+  "final_response": "**Product MRH-011C specifications:**..."
 }
 ```
 
-## 🌐 Production Web UI
+### **🆕 Multi-Stage Response (Complex Query)**
+```json
+{
+  "classification": {
+    "intent": "competitive_replacement_analysis",
+    "persona": "spt_sales_rep",
+    "execution_strategy": "multi_stage",
+    "confidence": 0.92
+  },
+  "tool_chain_results": {
+    "stage1_query": {"results": [...]},
+    "intermediate_analysis": {"selected_items": ["08-139-NPR"]},
+    "stage2_query": {"results": [...]},
+    "stage3_evaluation": {
+      "business_answer": "Equivalent product identified: 08-139-NPR...",
+      "key_findings": ["22-37% cost savings", "Multiple kit options"],
+      "recommended_action": "Recommend 08-139-NPR as primary replacement...",
+      "confidence": "high"
+    }
+  },
+  "final_response": "**Equivalent products identified with 22-37% cost savings...**"
+}
+```
 
-- **Component Analysis**: Optimized for product planning queries like "tell me the components in MRH-011C"
-- **Formatted Results**: SQL results displayed in interactive tables with hover effects
-- **Real-time Testing**: All endpoints accessible through responsive browser interface
-- **Quick Test Buttons**: Pre-built queries for common business scenarios
-- **Request Tracking**: Each query shows unique request ID for monitoring and debugging    
+## 🌐 **🆕 Enhanced Production Web UI**
+
+- **🆕 Multi-Stage Result Rendering**: Structured business analysis display with confidence indicators
+- **🆕 Business Analysis Section**: Clear presentation of Stage 3 evaluation with findings and recommendations
+- **🆕 Progressive Disclosure**: Primary insights first, detailed data on demand
+- **🆕 Smart Result Detection**: Automatic detection of single-stage vs multi-stage responses
+- **Enhanced Data Tables**: Interactive SQL results with sortable columns and hover effects
+- **Prompt Management**: Live editing of persona modules with automatic backup
+- **Real-time Testing**: All execution strategies accessible through responsive interface
+- **Quick Test Buttons**: Pre-built queries for both simple and complex business scenarios
 
 ## Configuration
 
@@ -150,38 +233,63 @@ AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
 ```
 
-## 📊 Performance Monitoring
+## 📊 **🆕 Enhanced Performance Monitoring**
+
+### **🆕 Multi-Stage Performance Analysis**
+**Current Baseline**: 40.7s total execution time
+
+| Stage | Duration | Operations | Optimization Target |
+|-------|----------|------------|-------------------|
+| Intent Classification | 3.4s (8.3%) | LLM routing | Caching patterns |
+| Stage 1: Discovery | 14.4s (35.4%) | SQL generation + execution | **50%+ reduction** |
+| Stage 2: Analysis | 15.7s (38.5%) | SQL generation + execution | **50%+ reduction** |
+| Stage 3: Evaluation | 7.1s (17.4%) | Pure LLM analysis | Prompt optimization |
 
 ### Real-time Dashboard
 ```bash
 python performance_dashboard.py
 ```
 
-### Sample Metrics Output
+### **🆕 Enhanced Metrics Output**
 ```
-MCP AGENT PERFORMANCE DASHBOARD
+MCP AGENT PERFORMANCE DASHBOARD - MULTI-STAGE ANALYTICS
 ================================================================================
 
-REQUEST METRICS
-Total Requests: 15
-Successful: 15 (100.0%)
-Failed: 0
+EXECUTION STRATEGY BREAKDOWN
+Single-Stage Queries: 60% (avg 12.8s)
+Multi-Stage Queries: 40% (avg 40.7s)
 
-BUSINESS SESSION PERFORMANCE
-Avg Question-to-Answer Time: 12,845ms (12.8s)
-95th Percentile: 25,300ms (25.3s)
+STAGE-LEVEL PERFORMANCE
+Stage 1 Discovery: 14.4s avg
+Stage 2 Analysis: 15.7s avg  
+Stage 3 Evaluation: 7.1s avg
+SQL Operations: 74% of total time
 
-AI USAGE PER BUSINESS QUESTION
-Avg API Calls per Question: 2.0
-Avg Tokens per Question: 26,920
-Estimated Cost per Question: $0.1346
+OPTIMIZATION OPPORTUNITIES
+High Impact: SQL generation caching (60-70% reduction potential)
+Medium Impact: Parallel processing (20-30% reduction)
 ```
 
-## 🚀 Production Deployment
+## 🚀 **🆕 Enhanced Production Deployment**
 
-This MVP is ready for production deployment with:
-- ✅ Full error handling and recovery
-- ✅ Comprehensive logging and monitoring
-- ✅ Performance optimization with AI caching
+This enhanced MVP is ready for production deployment with:
+- ✅ **🆕 Multi-stage intelligent execution** with adaptive strategy selection
+- ✅ **🆕 Structured business analysis** with confidence indicators and recommendations
+- ✅ **🆕 Domain-agnostic architecture** for rapid business domain expansion
+- ✅ **🆕 Enhanced UI rendering** with progressive disclosure and business insights
+- ✅ Full error handling and recovery with intelligent JSON parsing fallbacks
+- ✅ Comprehensive logging and monitoring with stage-level performance analytics
+- ✅ Performance optimization with AI caching and clear optimization roadmap
 - ✅ Security best practices implemented
 - ✅ Scalable architecture for extension
+
+## 📚 **🆕 Comprehensive Documentation**
+
+- **[DESIGN_ARCHITECTURE.md](DESIGN_ARCHITECTURE.md)** - Complete system architecture with multi-stage workflow details
+- **[CLAUDE.md](CLAUDE.md)** - Development guide with enhanced testing commands and prompt structure
+- **[agentic_layer/prompts/intent/README.md](agentic_layer/prompts/intent/README.md)** - Intent template framework documentation
+- **[UI_DOCUMENTATION.md](UI_DOCUMENTATION.md)** - Enhanced web interface with multi-stage result rendering
+- **[API_RESPONSE_EXAMPLES.md](API_RESPONSE_EXAMPLES.md)** - Complete API response examples for all execution strategies
+- **[PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md)** - Detailed optimization roadmap with specific targets and implementation phases
+
+**🎯 Ready for Enterprise**: Complete documentation, performance analysis, and optimization roadmap for production scaling.
