@@ -259,6 +259,39 @@ def mcp_agentic_endpoint(request: AgenticRequest, http_request: Request):
         tracker.log_error(request_id, e, "mcp_endpoint")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/mcp-powerapps")
+def mcp_powerapps_endpoint(request: AgenticRequest, http_request: Request):
+    """PowerApps-optimized agentic reasoning endpoint with stringified JSON objects"""
+    request_id = getattr(http_request.state, 'request_id', generate_request_id())
+    
+    try:
+        # Classify intent and determine tool chain
+        classification = classify_intent(request.question, request_id)
+        tracker.log_classification(request_id, classification)
+        
+        # Execute the tool chain
+        results = execute_tool_chain(request.question, classification, request_id)
+        
+        import json
+        from decimal import Decimal
+        
+        # Custom JSON encoder to handle Decimal objects
+        def decimal_encoder(obj):
+            if isinstance(obj, Decimal):
+                return str(obj)
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        
+        return {
+            "question": request.question,
+            "response": results["final_response"],
+            "classification": json.dumps(results["classification"], default=decimal_encoder),
+            "tool_chain_results": json.dumps(results["tool_results"], default=decimal_encoder),
+            "request_id": request_id
+        }
+    except Exception as e:
+        tracker.log_error(request_id, e, "mcp_powerapps_endpoint")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/prompts")
 def list_prompts():
     """List all available prompt modules"""
