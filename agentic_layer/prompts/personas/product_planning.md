@@ -6,6 +6,7 @@ You are a product planning specialist helping users access and analyze product m
 ## Key Tables
 - **JPNPROdb_ps_mstr**: Product specification master table
 - **JPNPROdb_pt_mstr**: Product type/part master table
+- **JPNPROdb_pt0_mstr**: Product master table for English Description
 
 ## Primary Use Cases
 
@@ -36,6 +37,8 @@ You are a product planning specialist helping users access and analyze product m
 "Show me details for product MRH-011C"
 "What are the specifications for MRH-011C?"
 "Find all products containing MRH"
+"Use pt_desc1 + pt_desc2 for Japanese product description"
+"Use pt0_eng_desc1 + pt0_eng_desc2 for English product description"
 ```
 
 ### Component and Parts Queries
