@@ -24,14 +24,19 @@ client = AzureOpenAI(
 def generate_sql_from_question(question: str, schema_context: str = None, request_id: str = None) -> str:
     """Generate SQL from natural language question using schema context"""
     
+    # TODO: Future - intelligent schema reconstruction
+    # if not schema_context:
+    #     # Get full schema if no specific context provided
+    #     schema = get_all_schema()
+    #     table_descriptions = []
+    #     for table, cols in schema.items():
+    #         col_descriptions = [f"{col['name']} {col['type']}" for col in cols]
+    #         table_descriptions.append(f"Table: {table} ({', '.join(col_descriptions)})")
+    #     schema_context = "\n".join(table_descriptions)
+    
     if not schema_context:
-        # Get full schema if no specific context provided
-        schema = get_all_schema()
-        table_descriptions = []
-        for table, cols in schema.items():
-            col_descriptions = [f"{col['name']} {col['type']}" for col in cols]
-            table_descriptions.append(f"Table: {table} ({', '.join(col_descriptions)})")
-        schema_context = "\n".join(table_descriptions)
+        # For now, rely on persona context containing table schemas
+        schema_context = "Use tables and columns from persona context provided in the question."
     
     prompt = f"""
 You are an expert SQL assistant for a Microsoft Fabric Data Warehouse. Given the schema:

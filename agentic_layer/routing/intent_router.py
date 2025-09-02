@@ -159,7 +159,7 @@ Metadata Strategies:
 - "minimal": Basic table validation only (use sparingly)  
 - "full": Comprehensive schema discovery needed (only for unknown domains)
 
-IMPORTANT: Default to "skip" for personas with well-defined table schemas. Only use "minimal" or "full" if the question involves completely unknown tables not covered by the selected persona.
+IMPORTANT: Always default to "skip" since personas contain complete table schema information. Metadata discovery is disabled for performance optimization.
 
 Respond with JSON:
 {{
@@ -231,13 +231,13 @@ Respond with JSON:
         print(f"JSON parsing error: {e}")
         print(f"Raw response: {response.choices[0].message.content}")
         
-        # Generic fallback - don't try to guess intent
+        # Generic fallback - don't try to guess intent  
         return {
             "intent": "general_query", 
             "persona": "product_planning",
             "confidence": 0.5,
             "execution_strategy": "single_stage",
-            "metadata_strategy": "skip",
+            "metadata_strategy": "skip",  # Always skip for performance
             "tool_chain": ["run_sql_query", "summarize_results"],
             "reasoning": f"Fallback due to {AZURE_OPENAI_DEPLOYMENT} response issue: {str(e)[:50]}",
             "requires_intermediate_processing": False,
@@ -262,10 +262,11 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
     }
     
     try:
+        # TODO: Future - intelligent metadata discovery
         # Handle metadata discovery
-        metadata_strategy = classification.get("metadata_strategy", "full")
-        if metadata_strategy != "skip":
-            results["tool_results"]["get_metadata"] = handle_metadata_discovery(metadata_strategy, classification)
+        # metadata_strategy = classification.get("metadata_strategy", "full")
+        # if metadata_strategy != "skip":
+        #     results["tool_results"]["get_metadata"] = handle_metadata_discovery(metadata_strategy, classification)
         
         # Execute based on strategy
         execution_strategy = classification.get("execution_strategy", "single_stage")
