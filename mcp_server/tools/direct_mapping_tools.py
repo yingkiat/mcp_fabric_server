@@ -27,11 +27,14 @@ def execute_competitor_mapping(user_question: str, classification: Dict[str, Any
     
     # Extract competitor information from AI classification
     extracted_entities = classification.get("extracted_entities", {})
-    competitor_product = extracted_entities.get("competitor_product")
+    competitor_product_raw = extracted_entities.get("competitor_product")
     competitor_name = extracted_entities.get("competitor_name")
     
-    if not competitor_product:
+    if not competitor_product_raw:
         raise ValueError("No competitor product extracted by AI classification")
+    
+    # Handle multiple products (comma-separated)
+    products = [p.strip() for p in competitor_product_raw.split(',') if p.strip()]
     
     # Direct SQL execution - simplified mapping table
     sql = """
@@ -42,27 +45,41 @@ def execute_competitor_mapping(user_question: str, classification: Dict[str, Any
     
     try:
         start_time = time.time()
+        all_results = []
+        successful_products = []
+        failed_products = []
         
-        # Execute with exact product name match - manually format SQL since execute_sql doesn't support parameters
-        formatted_sql = sql.replace("?", f"'{competitor_product}'")
-        results = execute_sql(formatted_sql)
+        # Try each product individually
+        for product in products:
+            product = product.strip()
+            formatted_sql = sql.replace("?", f"'{product}'")
+            results = execute_sql(formatted_sql)
+            
+            if results and len(results) > 0:
+                all_results.extend(results)
+                successful_products.append(product)
+            else:
+                # Try fuzzy matching for failed products
+                fuzzy_results = _try_fuzzy_matching(product)
+                if fuzzy_results and len(fuzzy_results) > 0:
+                    all_results.extend(fuzzy_results)
+                    successful_products.append(f"{product} (fuzzy)")
+                else:
+                    failed_products.append(product)
         
         execution_time_ms = (time.time() - start_time) * 1000
         
-        # If no results, try fuzzy matching approach
-        if not results or len(results) == 0:
-            results = _try_fuzzy_matching(competitor_product)
-            execution_time_ms += (time.time() - start_time) * 1000
-        
         return {
             "success": True,
-            "competitor_product": competitor_product,
+            "competitor_products": products,  # Multiple products input
             "competitor_name": competitor_name,
-            "our_equivalents": results,
-            "mapping_type": "direct_lookup",
+            "our_equivalents": all_results,
+            "mapping_type": "multi_product_lookup" if len(products) > 1 else "single_product_lookup",
             "sql_executed": sql,
             "execution_time_ms": round(execution_time_ms, 2),
-            "result_count": len(results) if results else 0,
+            "result_count": len(all_results) if all_results else 0,
+            "successful_products": successful_products,
+            "failed_products": failed_products,
             "extraction_method": "ai_classification"
         }
         
