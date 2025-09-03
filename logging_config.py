@@ -301,6 +301,67 @@ class PerformanceTracker:
         
         # Clean up
         del self.metrics[request_id]
+    
+    def log_direct_tool_success(self, request_id: str, tool_name: str, execution_time_ms: float):
+        """Log successful direct tool execution"""
+        if request_id in self.metrics:
+            self.metrics[request_id]['tools_executed'].append({
+                'tool': f"direct_{tool_name}",
+                'execution_time_ms': execution_time_ms,
+                'success': True
+            })
+        
+        self.loggers['main'].info(
+            f"Direct tool executed successfully: {tool_name}",
+            extra={
+                'request_id': request_id,
+                'tool_name': f"direct_{tool_name}",
+                'execution_time_ms': execution_time_ms,
+                'tool_type': 'direct'
+            }
+        )
+    
+    def log_direct_tool_failure(self, request_id: str, tool_name: str, error_msg: str):
+        """Log direct tool execution failure"""
+        if request_id in self.metrics:
+            self.metrics[request_id]['tools_executed'].append({
+                'tool': f"direct_{tool_name}",
+                'success': False,
+                'error': error_msg
+            })
+            self.metrics[request_id]['errors'].append({
+                'type': 'direct_tool_failure',
+                'tool': tool_name,
+                'error': error_msg
+            })
+        
+        self.loggers['errors'].error(
+            f"Direct tool failed: {tool_name} - {error_msg}",
+            extra={
+                'request_id': request_id,
+                'tool_name': f"direct_{tool_name}",
+                'error_type': 'direct_tool_failure',
+                'tool_type': 'direct'
+            }
+        )
+    
+    def log_direct_tool_fallback(self, request_id: str, reason: str):
+        """Log when direct tools are not used and system falls back to AI workflow"""
+        if request_id in self.metrics:
+            self.metrics[request_id]['tools_executed'].append({
+                'tool': 'ai_workflow_fallback',
+                'reason': reason,
+                'fallback_used': True
+            })
+        
+        self.loggers['main'].info(
+            f"Direct tool fallback: {reason}",
+            extra={
+                'request_id': request_id,
+                'fallback_reason': reason,
+                'execution_path': 'ai_workflow'
+            }
+        )
 
 # Global tracker instance
 tracker = PerformanceTracker()

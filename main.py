@@ -138,86 +138,121 @@ class PromptUpdateRequest(BaseModel):
 
 @app.get("/list_tools")
 def list_tools():
-    return {
-        "tools": [
-            {
-                "name": "run_sql_query",
-                "description": "Execute SQL query from natural language question or direct SQL",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "Natural language question to convert to SQL"
+    # Get dynamic direct tools from registry
+    direct_tools_list = []
+    try:
+        from mcp_server.tools.direct_tools_registry import get_all_direct_tools
+        all_direct_tools = get_all_direct_tools()
+        
+        for persona, tools in all_direct_tools.items():
+            for tool in tools:
+                direct_tools_list.append({
+                    "name": f"direct_{tool['name']}",
+                    "description": f"[DIRECT] {tool['description']} (Persona: {persona})",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {
+                                "type": "string",
+                                "description": "User question matching the direct tool pattern"
+                            }
                         },
-                        "sql": {
-                            "type": "string", 
-                            "description": "Direct SQL query to execute"
-                        }
+                        "required": ["question"]
                     },
-                    "required": []
-                }
-            },
-            {
-                "name": "get_metadata",
-                "description": "Get database metadata for specific table or entire schema",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "table_name": {
-                            "type": "string",
-                            "description": "Specific table name (optional)"
-                        }
+                    "persona": persona,
+                    "pattern_examples": tool.get("example_triggers", []),
+                    "is_direct_tool": True
+                })
+    except ImportError:
+        pass  # Direct tools not available, continue with standard tools only
+    
+    standard_tools = [
+        {
+            "name": "run_sql_query",
+            "description": "Execute SQL query from natural language question or direct SQL",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "Natural language question to convert to SQL"
                     },
-                    "required": []
-                }
-            },
-            {
-                "name": "summarize_results",
-                "description": "Generate business-friendly summary of query results",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "data": {
-                            "type": "array",
-                            "description": "Query result data to summarize"
-                        },
-                        "context": {
-                            "type": "string",
-                            "description": "Business context for summary"
-                        }
-                    },
-                    "required": ["data"]
-                }
-            },
-            {
-                "name": "generate_visualization",
-                "description": "Create charts from structured data",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "data": {
-                            "type": "array",
-                            "description": "Data for visualization"
-                        },
-                        "chart_type": {
-                            "type": "string",
-                            "description": "Type of chart: table, bar, line, pie"
-                        },
-                        "title": {
-                            "type": "string",
-                            "description": "Chart title"
-                        }
-                    },
-                    "required": ["data"]
-                }
+                    "sql": {
+                        "type": "string", 
+                        "description": "Direct SQL query to execute"
+                    }
+                },
+                "required": []
             }
-        ]
+        },
+        {
+            "name": "get_metadata",
+            "description": "Get database metadata for specific table or entire schema",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Specific table name (optional)"
+                    }
+                },
+                "required": []
+            }
+        },
+        {
+            "name": "summarize_results",
+            "description": "Generate business-friendly summary of query results",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "description": "Query result data to summarize"
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Business context for summary"
+                    }
+                },
+                "required": ["data"]
+            }
+        },
+        {
+            "name": "generate_visualization",
+            "description": "Create charts from structured data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "description": "Data for visualization"
+                    },
+                    "chart_type": {
+                        "type": "string",
+                        "description": "Type of chart: table, bar, line, pie"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    }
+                },
+                "required": ["data"]
+            }
+        }
+    ]
+    
+    return {
+        "tools": standard_tools + direct_tools_list,
+        "tool_categories": {
+            "standard_mcp_tools": len(standard_tools),
+            "direct_optimization_tools": len(direct_tools_list)
+        }
     }
 
 @app.post("/call_tool")
 def call_tool(request: ToolCallRequest):
     try:
+        # Handle standard MCP tools
         if request.tool == "run_sql_query":
             result = run_sql_query(**request.args)
             return {"result": result}
@@ -230,8 +265,46 @@ def call_tool(request: ToolCallRequest):
         elif request.tool == "generate_visualization":
             result = generate_visualization(**request.args)
             return {"result": result}
+        
+        # Handle direct tools
+        elif request.tool.startswith("direct_"):
+            try:
+                from mcp_server.tools.direct_tools_registry import get_all_direct_tools
+                all_direct_tools = get_all_direct_tools()
+                
+                # Extract tool name (remove "direct_" prefix)
+                direct_tool_name = request.tool[7:]  # Remove "direct_" prefix
+                
+                # Find the tool in registry
+                tool_found = False
+                for persona, tools in all_direct_tools.items():
+                    for tool_config in tools:
+                        if tool_config["name"] == direct_tool_name:
+                            # Execute direct tool
+                            question = request.args.get("question", "")
+                            if not question:
+                                raise ValueError("Direct tools require 'question' parameter")
+                            
+                            # Create mock classification for direct tool execution
+                            classification = {"persona": persona, "intent": "direct_tool_call"}
+                            result = tool_config["executor"](question, classification)
+                            
+                            return {
+                                "result": result,
+                                "tool_type": "direct",
+                                "persona": persona,
+                                "execution_path": "direct_tool_call"
+                            }
+                
+                if not tool_found:
+                    raise HTTPException(status_code=400, detail=f"Direct tool '{direct_tool_name}' not found in registry")
+                    
+            except ImportError:
+                raise HTTPException(status_code=500, detail="Direct tools registry not available")
+        
         else:
             raise HTTPException(status_code=400, detail=f"Unknown tool: {request.tool}")
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

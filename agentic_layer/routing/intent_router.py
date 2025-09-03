@@ -143,6 +143,8 @@ Available tools:
 
 Analyze this question: "{user_question}"
 
+IMPORTANT: If the question contains "Hogy" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
+
 Determine:
 1. Best matching persona based on question content and domain
 2. Execution strategy (single-stage vs multi-stage)
@@ -246,7 +248,7 @@ Respond with JSON:
 
 def execute_tool_chain(user_question: str, classification: Dict[str, Any], request_id: str = None) -> Dict[str, Any]:
     """
-    Domain-agnostic tool chain execution with multi-stage support
+    Domain-agnostic tool chain execution with direct-first optimization and multi-stage support
     """
     from mcp_server.tools.sql_tools import get_metadata, run_sql_query
     from mcp_server.tools.analysis_tools import summarize_results, generate_visualization
@@ -262,27 +264,19 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
     }
     
     try:
-        # TODO: Future - intelligent metadata discovery
-        # Handle metadata discovery
-        # metadata_strategy = classification.get("metadata_strategy", "full")
-        # if metadata_strategy != "skip":
-        #     results["tool_results"]["get_metadata"] = handle_metadata_discovery(metadata_strategy, classification)
+        # Step 1: Try direct tools first (performance optimization)
+        direct_results = attempt_direct_tools(user_question, classification, request_id)
         
-        # Execute based on strategy
-        execution_strategy = classification.get("execution_strategy", "single_stage")
-        
-        if execution_strategy == "multi_stage":
-            results["tool_results"] = execute_multi_stage_workflow(
-                user_question, classification, persona_content, request_id, results["tool_results"]
-            )
-        elif execution_strategy == "iterative":
-            results["tool_results"] = execute_iterative_workflow(
-                user_question, classification, persona_content, request_id, results["tool_results"]
+        # Step 2: Execute based on direct tool success
+        if direct_results["success"]:
+            # Direct path: Fast data retrieval + AI evaluation
+            results["tool_results"] = execute_direct_with_evaluation(
+                user_question, direct_results, classification, persona_content, request_id
             )
         else:
-            # Single-stage execution (current behavior)
-            results["tool_results"] = execute_single_stage_workflow(
-                user_question, classification, persona_content, request_id, results["tool_results"]
+            # Fallback path: Standard AI workflow
+            results["tool_results"] = execute_standard_ai_workflow(
+                user_question, classification, persona_content, request_id, {}
             )
         
         # Generate final response
@@ -711,6 +705,189 @@ def execute_iterative_workflow(user_question: str, classification: Dict[str, Any
     """Iterative refinement workflow (future enhancement)"""
     # For now, fallback to multi-stage
     return execute_multi_stage_workflow(user_question, classification, persona_content, request_id, existing_results)
+
+# ===============================================================================
+# DIRECT-FIRST OPTIMIZATION FUNCTIONS
+# ===============================================================================
+
+def attempt_direct_tools(user_question: str, classification: Dict[str, Any], request_id: str = None) -> Dict[str, Any]:
+    """
+    Try direct tools with comprehensive error handling and performance tracking
+    """
+    import time
+    
+    try:
+        from mcp_server.tools.direct_tools_registry import get_direct_tools_for_persona
+        
+        persona = classification.get("persona", "")
+        direct_tools = get_direct_tools_for_persona(persona)
+        
+        if not direct_tools:
+            return {"success": False, "reason": "no_direct_tools_for_persona"}
+        
+        # Try each applicable direct tool
+        for tool_config in direct_tools:
+            try:
+                # Check if pattern matches
+                if tool_config["pattern_matcher"](user_question):
+                    
+                    # Execute direct tool with timing
+                    start_time = time.time()
+                    result = tool_config["executor"](user_question, classification)
+                    execution_time_ms = (time.time() - start_time) * 1000
+                    
+                    # Log successful direct execution
+                    if request_id:
+                        from logging_config import tracker
+                        tracker.log_direct_tool_success(request_id, tool_config["name"], execution_time_ms)
+                    
+                    return {
+                        "success": True,
+                        "tool_used": tool_config["name"], 
+                        "result": result,
+                        "execution_time_ms": execution_time_ms,
+                        "pattern_matched": True
+                    }
+                    
+            except Exception as e:
+                # Log failure and continue to next tool
+                if request_id:
+                    from logging_config import tracker
+                    tracker.log_direct_tool_failure(request_id, tool_config["name"], str(e))
+                
+                print(f"Direct tool {tool_config['name']} failed: {str(e)}")
+                continue
+        
+        return {"success": False, "reason": "no_pattern_match_or_all_failed"}
+        
+    except ImportError:
+        # Direct tools registry not available - fallback gracefully
+        return {"success": False, "reason": "direct_tools_registry_unavailable"}
+    except Exception as e:
+        # Unexpected error - log and fallback
+        if request_id:
+            from logging_config import tracker
+            tracker.log_error(request_id, e, "direct_tools_attempt")
+        return {"success": False, "reason": f"direct_tools_error: {str(e)}"}
+
+def execute_direct_with_evaluation(user_question: str, direct_results: Dict[str, Any], 
+                                 classification: Dict[str, Any], persona_content: str, request_id: str = None) -> Dict[str, Any]:
+    """
+    Execute direct data retrieval + AI evaluation (Stage 3 equivalent)
+    Direct results become the 'final_data' for AI evaluation
+    """
+    
+    results = {
+        "direct_tool_execution": direct_results,
+        "execution_path": "direct_first_with_ai_evaluation"
+    }
+    
+    # Extract data from direct tool results
+    direct_data = direct_results["result"].get("our_equivalents", [])
+    
+    if direct_data and len(direct_data) > 0:
+        
+        # Stage 3: AI Evaluation using direct results (same as multi-stage Stage 3)
+        stage3_template = load_intent_template("stage3_evaluation")
+        
+        stage3_context = f"""
+{stage3_template}
+
+PERSONA CONTEXT:
+{persona_content}
+
+DIRECT TOOL USED: {direct_results["tool_used"]}
+DIRECT EXECUTION TIME: {direct_results["execution_time_ms"]}ms
+
+USER QUESTION: {user_question}
+
+STAGE 3 TASK: Evaluate direct lookup results to extract clear business answer using persona domain expertise.
+
+Direct Tool Results (compressed):
+{compress_data_for_llm(direct_data, max_records=10)}
+
+IMPORTANT: This data was retrieved via direct SQL lookup, not AI-generated queries. Focus on business analysis and insights.
+"""
+        
+        # Log data compression if available
+        if direct_data and request_id:
+            try:
+                from session_logger import get_session_logger
+                session_logger = get_session_logger(request_id, user_question)
+                compressed_sample = compress_data_for_llm(direct_data, max_records=10)
+                compression_stats = get_compression_stats(direct_data, compressed_sample)
+                session_logger.log_data_compression(
+                    "direct_tool_evaluation", 
+                    compression_stats['original_size'], 
+                    compression_stats['compressed_size'], 
+                    compression_stats['compression_ratio']
+                )
+            except Exception:
+                pass  # Don't fail if logging fails
+        
+        # AI evaluation of direct results
+        evaluation_result = evaluate_final_results(stage3_context, request_id)
+        results["stage3_evaluation"] = evaluation_result
+        
+    else:
+        # No data from direct tool - create evaluation noting the failure
+        results["stage3_evaluation"] = {
+            "business_answer": "Direct lookup found no matching products",
+            "key_findings": ["No direct mapping available for requested product"],
+            "recommended_action": "Try alternative search or contact support for manual mapping",
+            "supporting_data": {
+                "primary_values": "No results",
+                "alternatives": "AI workflow may find similar products",
+                "confidence": "low"
+            },
+            "data_quality": "poor - no direct mapping available",
+            "sql_executed": None
+        }
+    
+    # Execute remaining standard tools if specified in tool chain
+    tool_chain = classification.get("tool_chain", [])
+    
+    if "summarize_results" in tool_chain and direct_data:
+        from mcp_server.tools.analysis_tools import summarize_results
+        results["summarize_results"] = summarize_results(direct_data, classification["intent"])
+    
+    if "generate_visualization" in tool_chain and direct_data:
+        from mcp_server.tools.analysis_tools import generate_visualization
+        results["generate_visualization"] = generate_visualization(direct_data, "table", f"Direct Results: {user_question}")
+    
+    return results
+
+def execute_standard_ai_workflow(user_question: str, classification: Dict[str, Any], 
+                               persona_content: str, request_id: str, existing_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute standard AI workflow (fallback from direct tools) 
+    This maintains the existing single-stage/multi-stage logic
+    """
+    
+    results = existing_results.copy()
+    results["execution_path"] = "ai_workflow_fallback"
+    
+    # Log that we're using AI fallback
+    if request_id:
+        from logging_config import tracker
+        tracker.log_direct_tool_fallback(request_id, "falling_back_to_ai_workflow")
+    
+    # Execute based on original strategy  
+    execution_strategy = classification.get("execution_strategy", "single_stage")
+    
+    if execution_strategy == "multi_stage":
+        return execute_multi_stage_workflow(
+            user_question, classification, persona_content, request_id, results
+        )
+    elif execution_strategy == "iterative":
+        return execute_iterative_workflow(
+            user_question, classification, persona_content, request_id, results
+        )
+    else:
+        # Single-stage execution
+        return execute_single_stage_workflow(
+            user_question, classification, persona_content, request_id, results
+        )
 
 def generate_final_response(user_question: str, results: Dict[str, Any], persona_context: str) -> str:
     """Generate a final business-friendly response using all tool results"""
