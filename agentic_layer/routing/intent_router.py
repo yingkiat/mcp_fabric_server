@@ -759,8 +759,8 @@ def attempt_direct_tools(user_question: str, classification: Dict[str, Any], req
         # Try each applicable direct tool
         for tool_config in direct_tools:
             try:
-                # Check if pattern matches
-                if tool_config["pattern_matcher"](user_question):
+                # Check if pattern matches (pass classification to AI-powered pattern matcher)
+                if tool_config["pattern_matcher"](user_question, classification):
                     
                     # Execute direct tool with timing
                     start_time = time.time()

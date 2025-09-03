@@ -5,6 +5,37 @@ import re
 from typing import Dict, List, Callable, Any
 from .direct_mapping_tools import execute_competitor_mapping
 
+def _is_competitor_mapping_applicable(user_question: str, classification: dict = None) -> bool:
+    """
+    Smart heuristic: Try direct tool when conditions suggest it might work
+    - Competitor mentions (any language)  
+    - Product code patterns
+    - spt_sales_rep persona
+    Let the tool attempt and fail gracefully if needed
+    
+    TODO: This heuristic can be improved in the future with:
+    - ML-based pattern recognition
+    - Success rate feedback loops  
+    - More sophisticated product code detection
+    """
+    if not classification:
+        return False
+    
+    # Must be competitor-related query
+    if classification.get("persona") != "spt_sales_rep":
+        return False
+    
+    # Heuristics that suggest direct tool might succeed:
+    extracted_entities = classification.get("extracted_entities", {})
+    has_competitor_product = bool(extracted_entities.get("competitor_product"))
+    
+    # Look for product code patterns in question (alphanumeric codes)
+    import re
+    has_product_code = bool(re.search(r'[A-Z]{1,4}-[A-Z0-9]{3,10}|[A-Z]{2,4}[0-9]{2,6}', user_question, re.IGNORECASE))
+    
+    # Try direct if we have competitor product OR product code pattern
+    return has_competitor_product or has_product_code
+
 def get_direct_tools_for_persona(persona: str) -> List[Dict[str, Any]]:
     """Get applicable direct tools based on persona"""
     return DIRECT_TOOLS.get(persona, [])
@@ -17,10 +48,10 @@ def get_all_direct_tools() -> Dict[str, List[Dict[str, Any]]]:
 DIRECT_TOOLS = {
     "spt_sales_rep": [
         {
-            "name": "competitor_mapping",
-            "pattern_matcher": lambda q: bool(re.search(r"Hogy\s+[\w\-\.\s]+", q, re.IGNORECASE)),
+            "name": "competitor_mapping", 
+            "pattern_matcher": lambda q, classification=None: _is_competitor_mapping_applicable(q, classification),
             "executor": execute_competitor_mapping,
-            "description": "Direct competitor product mapping for Hogy products",
+            "description": "Direct competitor product mapping for competitor products",
             "example_triggers": [
                 "Replace Hogy BD Luer-Lock Syringe 2.5mL with our equivalent",
                 "Hogy catheter equivalent",
