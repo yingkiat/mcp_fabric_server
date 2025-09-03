@@ -98,6 +98,9 @@ def classify_intent(user_question: str, request_id: str = None) -> Dict[str, Any
     Domain-agnostic intent classification and routing
     """
     
+    # Load the classification template from markdown
+    stage0_template = load_intent_template("stage0_intent")
+    
     # Get available personas dynamically with sample content for better classification
     available_personas = get_available_personas()
     
@@ -129,52 +132,22 @@ def classify_intent(user_question: str, request_id: str = None) -> Dict[str, Any
     
     persona_list = "\n".join(persona_list)
     
+    # Build the classification prompt using the template
     classification_prompt = f"""
-You are a domain-agnostic intent classifier for a data warehouse assistant.
+{stage0_template}
+
+## Current Analysis Request
+
+Analyze this question: "{user_question}"
 
 Available personas (business domain experts):
 {persona_list}
 
-Available tools:
-- get_metadata: Schema discovery and table analysis
-- run_sql_query: Execute SQL queries (from questions or direct SQL)  
-- summarize_results: Create business summaries
-- generate_visualization: Create charts and tables
-
-Analyze this question: "{user_question}"
-
-IMPORTANT: If the question contains "Hogy" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
-
-Determine:
-1. Best matching persona based on question content and domain
-2. Execution strategy (single-stage vs multi-stage)
-3. Required metadata discovery approach
-4. Appropriate tool chain
-
-Execution Strategies:
-- "single_stage": Standard one-pass execution
-- "multi_stage": Requires intermediate AI reasoning between queries (3 stages: discovery → analysis → evaluation)
-- "iterative": Multiple rounds of refinement
-
-Metadata Strategies:
-- "skip": Use static schemas from personas (PREFERRED for known personas)
-- "minimal": Basic table validation only (use sparingly)  
-- "full": Comprehensive schema discovery needed (only for unknown domains)
-
-IMPORTANT: Always default to "skip" since personas contain complete table schema information. Metadata discovery is disabled for performance optimization.
-
-Respond with JSON:
-{{
-    "intent": "descriptive intent name",
-    "persona": "best_matching_persona_name",
-    "confidence": 0.0-1.0,
-    "execution_strategy": "single_stage|multi_stage|iterative",
-    "metadata_strategy": "skip|minimal|full",
-    "tool_chain": ["tool1", "tool2"],
-    "reasoning": "why this classification and strategy were selected",
-    "requires_intermediate_processing": boolean,
-    "actual_tables": ["list", "of", "actual", "table", "names", "from", "selected", "persona"]
-}}
+## Required Analysis
+1. Extract any competitor names and specific products mentioned
+2. Determine the best matching persona based on question content and domain  
+3. Select appropriate execution strategy and tool chain
+4. Provide reasoning for classification decisions
 """
     
     # Get model-appropriate parameters
@@ -267,12 +240,25 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
         # Step 1: Try direct tools first (performance optimization)
         direct_results = attempt_direct_tools(user_question, classification, request_id)
         
-        # Step 2: Execute based on direct tool success
+        # Step 2: Execute based on direct tool success AND result quality
         if direct_results["success"]:
-            # Direct path: Fast data retrieval + AI evaluation
-            results["tool_results"] = execute_direct_with_evaluation(
-                user_question, direct_results, classification, persona_content, request_id
-            )
+            # Check if direct tool actually found meaningful results
+            direct_data = direct_results["result"].get("our_equivalents", [])
+            
+            if direct_data and len(direct_data) > 0:
+                # Direct path: Fast data retrieval + AI evaluation
+                results["tool_results"] = execute_direct_with_evaluation(
+                    user_question, direct_results, classification, persona_content, request_id
+                )
+            else:
+                # Direct tool found no results - fallback to AI workflow
+                if request_id:
+                    from logging_config import tracker
+                    tracker.log_direct_tool_fallback(request_id, "direct_tool_found_no_results")
+                
+                results["tool_results"] = execute_standard_ai_workflow(
+                    user_question, classification, persona_content, request_id, {}
+                )
         else:
             # Fallback path: Standard AI workflow
             results["tool_results"] = execute_standard_ai_workflow(
@@ -332,6 +318,51 @@ User question: {user_question}
         elif tool_name == "generate_visualization" and "run_sql_query" in results:
             sql_results = results["run_sql_query"].get("results", [])
             results["generate_visualization"] = generate_visualization(sql_results, "table", f"Results for: {user_question}")
+    
+    # Add AI business evaluation if requested by classification
+    enable_ai_evaluation = classification.get("enable_ai_evaluation", False)
+    if enable_ai_evaluation and "run_sql_query" in results:
+        final_data = results["run_sql_query"].get("results", [])
+        if final_data:
+            # Load the stage3 evaluation template
+            stage3_template = load_intent_template("stage3_evaluation")
+            
+            stage3_context = f"""
+{stage3_template}
+
+PERSONA CONTEXT:
+{persona_content}
+
+SINGLE-STAGE EXECUTION WITH AI EVALUATION: Direct SQL query executed successfully
+QUERY RESULTS: {len(final_data)} records retrieved
+
+USER QUESTION: {user_question}
+
+STAGE 3 TASK: Evaluate single-stage query results to extract clear business answer using persona domain expertise.
+
+Final Data Sample (compressed):
+{compress_data_for_llm(final_data, max_records=10) if final_data else "No data available"}
+"""
+            
+            # Log data compression for single-stage evaluation
+            if final_data and request_id:
+                try:
+                    from session_logger import get_session_logger
+                    session_logger = get_session_logger(request_id, user_question)
+                    compressed_sample = compress_data_for_llm(final_data, max_records=10)
+                    compression_stats = get_compression_stats(final_data, compressed_sample)
+                    session_logger.log_data_compression(
+                        "single_stage_evaluation", 
+                        compression_stats['original_size'], 
+                        compression_stats['compressed_size'], 
+                        compression_stats['compression_ratio']
+                    )
+                except Exception:
+                    pass  # Don't fail if logging fails
+            
+            # AI evaluation of single-stage results
+            evaluation_result = evaluate_final_results(stage3_context, request_id)
+            results["stage3_evaluation"] = evaluation_result
     
     return results
 

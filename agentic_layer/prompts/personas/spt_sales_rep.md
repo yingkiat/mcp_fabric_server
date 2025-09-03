@@ -139,13 +139,10 @@ AND (
 ```sql
 -- Universal search pattern covering all query types
 -- CRITICAL: Generate COMPREHENSIVE search terms with proper katakana conversion
-SELECT TOP 100 
-    ps.ps_par AS Pack_Code,
-    pt.pt_desc1 + pt.pt_desc2 AS Pack_Description,
+SELECT DISTINCT TOP 100 
     ps.ps_comp AS Component_Code,
     comp.pt_desc1 + comp.pt_desc2 AS Component_Description,
-    pt0.pt0_eng_desc1 + pt0.pt0_eng_desc2 AS English_Component_Description,
-    code.code_cmmt AS Pack_Comment
+    pt0.pt0_eng_desc1 + pt0.pt0_eng_desc2 AS English_Component_Description
 FROM JPNPROdb_ps_mstr ps
 LEFT JOIN JPNPROdb_pt_mstr pt ON ps.ps_par = pt.pt_part AND ps.ps_domain = pt.pt_domain
 LEFT JOIN JPNPROdb_pt_mstr comp ON ps.ps_comp = comp.pt_part AND ps.ps_domain = comp.pt_domain
@@ -162,7 +159,7 @@ WHERE
          OR LOWER(comp.pt_desc1 + comp.pt_desc2) LIKE '%[broader_japanese_kanji_hiragana]%'           -- e.g., %注射器%
          OR LOWER(pt0.pt0_eng_desc1 + pt0.pt0_eng_desc2) LIKE '%[specific_english_equivalent]%'      -- e.g., %syringe 10ml lock%
          OR LOWER(pt0.pt0_eng_desc1 + pt0.pt0_eng_desc2) LIKE '%[broader_english_category]%')        -- e.g., %syringe%
-ORDER BY ps.ps_par, ps.ps_comp;
+ORDER BY ps.ps_comp;
 ```
 
 ## Search Logic Priority

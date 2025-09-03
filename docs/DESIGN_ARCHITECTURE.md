@@ -147,31 +147,87 @@ User Query → Pattern Detection → Direct Tool (Fast) → AI Evaluation → Re
 3. **Zero Risk**: Graceful fallback ensures no regression in functionality  
 4. **Scalable Registry**: Easy expansion without core code changes
 
-### Enhanced Request Flow with Direct-First
+### 🔄 Complete System Flow Architecture
 
 ```mermaid
 graph TD
-    A[User Question] --> B[Intent Classification]
-    B --> C[Pattern Detection]
-    C --> D{Direct Tool Match?}
+    A[User Question] --> B[Stage 0: Intent Classification AI]
+    B --> C{Execution Strategy?}
     
-    D -->|Yes| E[Execute Direct Tool]
-    E --> F{Direct Success?}
-    F -->|Yes| G[Fast Data Retrieved]
-    F -->|No| H[Log Fallback Reason]
+    C -->|Single-Stage| D[Direct-First Optimization]
+    C -->|Multi-Stage| E[Stage 1: Discovery AI]
+    C -->|Iterative| F[Iterative Workflow]
     
-    D -->|No| H[No Pattern Match]
-    H --> I[Standard AI Workflow]
-    I --> J[AI Data Gathering]
+    D --> G{Direct Tool Match?}
+    G -->|Yes + Results| H[Direct Data + Stage 3 Evaluation]
+    G -->|Yes + No Results| I[Fallback to AI Workflow]
+    G -->|No Match| I[Fallback to AI Workflow]
     
-    G --> K[Stage 3: AI Evaluation]
-    J --> K
-    K --> L[Business Response]
+    E --> J[Stage 2: Analysis AI]
+    J --> K[Stage 3: Evaluation AI]
     
-    subgraph "Performance Comparison"
-        M["Direct Path: 0.5-1.5s<br/>⚡ 80% faster"]
-        N["AI Fallback: 3-6s<br/>🔄 Same as before"]
+    I --> L[Standard AI SQL Generation]
+    L --> M[Stage 3: Evaluation AI]
+    
+    H --> N[Business Response]
+    K --> N
+    M --> N
+    
+    subgraph "Stage Breakdown"
+        O["Stage 0: Intent + Entity Extraction<br/>🎯 Always runs first"]
+        P["Stage 1: Discovery Queries<br/>🔍 Multi-stage only"]
+        Q["Stage 2: Analysis Queries<br/>📊 Multi-stage only"] 
+        R["Stage 3: Business Evaluation<br/>🧠 Always runs last"]
     end
+    
+    subgraph "Performance Paths"
+        S["Direct Path: 0.5-1.5s<br/>⚡ 80-90% faster"]
+        T["Multi-Stage: 15-45s<br/>🔬 Complex analysis"]
+        U["Single-Stage Fallback: 3-6s<br/>🔄 Standard AI workflow"]
+    end
+```
+
+### AI Call Sequence by Strategy
+
+**Single-Stage Direct-First (Optimized)**:
+```
+User Question
+    ↓
+Stage 0: Intent Classification AI (extracts entities)
+    ↓
+Direct Tool Execution (uses extracted entities)
+    ↓
+Stage 3: Evaluation AI (business analysis)
+    ↓
+Business Response
+```
+
+**Single-Stage Fallback (Standard)**:
+```
+User Question
+    ↓
+Stage 0: Intent Classification AI
+    ↓
+AI SQL Generation
+    ↓
+Stage 3: Evaluation AI
+    ↓
+Business Response
+```
+
+**Multi-Stage (Complex Analysis)**:
+```
+User Question
+    ↓
+Stage 0: Intent Classification AI
+    ↓
+Stage 1: Discovery AI → SQL Generation → Execution
+    ↓
+Stage 2: Analysis AI → SQL Generation → Execution  
+    ↓
+Stage 3: Evaluation AI (pure analysis, no SQL)
+    ↓
+Business Response
 ```
 
 ### Direct Tool Registry System
