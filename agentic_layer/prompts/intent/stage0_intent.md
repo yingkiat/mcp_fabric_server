@@ -5,10 +5,6 @@ Domain-agnostic intent classification and entity extraction for business queries
 
 ## Classification Framework
 
-### Available Personas
-Available personas (business domain experts):
-{persona_list}
-
 ### Available Tools
 - get_metadata: Schema discovery and table analysis
 - run_sql_query: Execute SQL queries (from questions or direct SQL)  
@@ -21,9 +17,20 @@ Available personas (business domain experts):
 **CRITICAL PRIORITY**: If the question contains "SPT", "HOGY", "LIVEDO", "HOPES" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
 
 ### Entity Extraction Requirements
-When competitor products are mentioned, extract:
-1. **competitor_name**: The competitor company name (e.g., "Hogy", "BD", "Terumo")
-2. **competitor_product**: The specific product name/model (e.g., "BD Luer-Lock Syringe 2.5mL", "BR-56U10")
+Always extract these entities for direct tool optimization:
+1. **competitor_name**: The competitor company name (e.g., "Hogy", "BD", "Terumo") - null if not mentioned
+2. **competitor_product**: The specific competitor product codes/models when looking for equivalents (e.g., ["BD Luer-Lock Syringe 2.5mL", "BR-56U10", "RH-710LS10TW2"]) - empty array if none
+3. **product_codes**: Our internal product codes when asking about our own products (e.g., ["MRH-011C", "ABC-123D"]) - empty array if none
+4. **intent_type**: Primary user intent category - one of:
+   - "competitor_mapping": Finding our equivalent for competitor products
+   - "specs_lookup": Getting detailed specifications for our products  
+   - "component_analysis": Understanding product relationships and parts
+   - "pricing_inquiry": Price-related questions
+   - "general_inquiry": Other business questions
+
+### Key Distinction: competitor_product vs product_codes
+- **competitor_product**: Use when user wants to find OUR equivalents FOR competitor products (mapping intent)
+- **product_codes**: Use when user wants information ABOUT our own products (specs/analysis intent)
 
 ### Execution Strategies
 - **single_stage**: Standard one-pass execution
@@ -52,7 +59,9 @@ When competitor products are mentioned, extract:
     "actual_tables": ["list", "of", "actual", "table", "names", "from", "selected", "persona"],
     "extracted_entities": {
         "competitor_name": "extracted competitor company name or null",
-        "competitor_product": "extracted specific product name/model or null"
+        "competitor_product": ["array", "of", "competitor", "product", "codes"],
+        "product_codes": ["array", "of", "internal", "product", "codes"],
+        "intent_type": "competitor_mapping|specs_lookup|component_analysis|pricing_inquiry|general_inquiry"
     },
     "enable_ai_evaluation": boolean
 }
@@ -76,33 +85,75 @@ When competitor products are mentioned, extract:
 
 ## Entity Extraction Examples
 
-### Example 1: Direct Competitor Reference
+### Example 1: Competitor Mapping Query
 **Input**: "our product for hogy BR-56U10"
 **Extracted Entities**:
 ```json
 {
     "competitor_name": "Hogy",
-    "competitor_product": "BR-56U10"
+    "competitor_product": ["BR-56U10"],
+    "product_codes": [],
+    "intent_type": "competitor_mapping"
 }
 ```
 
-### Example 2: Complex Competitor Query
-**Input**: "Hogy quoted us a surgical kit with 'BD Luer-Lock Syringe 2.5mL'. What's our equivalent"
+### Example 2: Product Specs Query  
+**Input**: "tell me the specifications for MRH-011C"
 **Extracted Entities**:
 ```json
 {
-    "competitor_name": "BD",
-    "competitor_product": "BD Luer-Lock Syringe 2.5mL"
+    "competitor_name": null,
+    "competitor_product": null,
+    "product_codes": ["MRH-011C"],
+    "intent_type": "specs_lookup"
 }
 ```
 
-### Example 3: No Competitor Reference
+### Example 3: Component Analysis
 **Input**: "tell me the components in MRH-011C"
 **Extracted Entities**:
 ```json
 {
     "competitor_name": null,
-    "competitor_product": null
+    "competitor_product": [],
+    "product_codes": ["MRH-011C"],
+    "intent_type": "component_analysis"
+}
+```
+
+### Example 4: Multiple Product Codes
+**Input**: "compare specifications between MRH-011C and ABC-123D"
+**Extracted Entities**:
+```json
+{
+    "competitor_name": null,
+    "competitor_product": [],
+    "product_codes": ["MRH-011C", "ABC-123D"],
+    "intent_type": "specs_lookup"
+}
+```
+
+### Example 5: Multiple Competitor Products
+**Input**: "以下の競合製品に代わるMedline製品を教えて。RH-710LS10TW2, SR-870WP02A, TL-2632LCP3"
+**Extracted Entities**:
+```json
+{
+    "competitor_name": null,
+    "competitor_product": ["RH-710LS10TW2", "SR-870WP02A", "TL-2632LCP3"],
+    "product_codes": [],
+    "intent_type": "competitor_mapping"
+}
+```
+
+### Example 6: Complex Competitor Query
+**Input**: "Hogy quoted us a surgical kit with 'BD Luer-Lock Syringe 2.5mL'. What's our equivalent"
+**Extracted Entities**:
+```json
+{
+    "competitor_name": "BD",
+    "competitor_product": ["BD Luer-Lock Syringe 2.5mL"], 
+    "product_codes": [],
+    "intent_type": "competitor_mapping"
 }
 ```
 

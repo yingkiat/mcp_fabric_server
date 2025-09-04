@@ -3,20 +3,14 @@ Direct Tools Registry - Performance optimization through pattern-matched fast ex
 """
 import re
 from typing import Dict, List, Callable, Any
-from .direct_mapping_tools import execute_competitor_mapping
+from .direct_mapping_tools import execute_competitor_mapping, execute_product_specs_lookup
 
 def _is_competitor_mapping_applicable(user_question: str, classification: dict = None) -> bool:
     """
-    Smart heuristic: Try direct tool when conditions suggest it might work
-    - Competitor mentions (any language)  
-    - Product code patterns
-    - spt_sales_rep persona
-    Let the tool attempt and fail gracefully if needed
-    
-    TODO: This heuristic can be improved in the future with:
-    - ML-based pattern recognition
-    - Success rate feedback loops  
-    - More sophisticated product code detection
+    AI-powered pattern matching: Use extracted entities to determine if competitor mapping applies
+    - Must have competitor product extracted by AI
+    - Must be spt_sales_rep persona
+    - Intent type should be competitor_mapping
     """
     if not classification:
         return False
@@ -25,16 +19,35 @@ def _is_competitor_mapping_applicable(user_question: str, classification: dict =
     if classification.get("persona") != "spt_sales_rep":
         return False
     
-    # Heuristics that suggest direct tool might succeed:
+    # Use AI-extracted entities instead of regex patterns
     extracted_entities = classification.get("extracted_entities", {})
     has_competitor_product = bool(extracted_entities.get("competitor_product"))
+    intent_type = extracted_entities.get("intent_type")
     
-    # Look for product code patterns in question (alphanumeric codes)
-    import re
-    has_product_code = bool(re.search(r'[A-Z]{1,4}-[A-Z0-9]{3,10}|[A-Z]{2,4}[0-9]{2,6}', user_question, re.IGNORECASE))
+    # Try direct if we have competitor product AND correct intent
+    return has_competitor_product and intent_type == "competitor_mapping"
+
+def _is_product_specs_applicable(user_question: str, classification: dict = None) -> bool:
+    """
+    AI-powered pattern matching: Use extracted entities to determine if product specs lookup applies
+    - Must have internal product codes extracted by AI
+    - Must be spt_sales_rep persona
+    - Intent type should be specs_lookup
+    """
+    if not classification:
+        return False
     
-    # Try direct if we have competitor product OR product code pattern
-    return has_competitor_product or has_product_code
+    # Must be sales rep persona
+    if classification.get("persona") != "spt_sales_rep":
+        return False
+    
+    # Use AI-extracted entities instead of regex patterns
+    extracted_entities = classification.get("extracted_entities", {})
+    has_product_codes = bool(extracted_entities.get("product_codes"))
+    intent_type = extracted_entities.get("intent_type")
+    
+    # Try direct if we have product codes AND correct intent
+    return has_product_codes and intent_type == "specs_lookup"
 
 def get_direct_tools_for_persona(persona: str) -> List[Dict[str, Any]]:
     """Get applicable direct tools based on persona"""
@@ -60,6 +73,22 @@ DIRECT_TOOLS = {
             "expected_performance": {
                 "avg_execution_time_ms": 200,
                 "success_rate_target": 0.85,
+                "fallback_acceptable": True
+            }
+        },
+        {
+            "name": "product_specs_lookup",
+            "pattern_matcher": lambda q, classification=None: _is_product_specs_applicable(q, classification),
+            "executor": execute_product_specs_lookup,
+            "description": "Direct product specifications lookup for internal product codes",
+            "example_triggers": [
+                "tell me the specifications for MRH-011C",
+                "what are the specs of ABC-123D",
+                "specifications for our product MRH-011C"
+            ],
+            "expected_performance": {
+                "avg_execution_time_ms": 100,
+                "success_rate_target": 0.95,
                 "fallback_acceptable": True
             }
         }

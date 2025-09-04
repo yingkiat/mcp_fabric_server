@@ -86,7 +86,7 @@ def execute_competitor_mapping(user_question: str, classification: Dict[str, Any
             "success": True,
             "competitor_products": products,  # Multiple products input
             "competitor_name": competitor_name,
-            "our_equivalents": all_results,
+            "results": all_results,
             "mapping_type": "multi_product_lookup" if len(products) > 1 else "single_product_lookup",
             "sql_executed": sql,
             "execution_time_ms": round(execution_time_ms, 2),
@@ -183,6 +183,99 @@ def _extract_product_keywords(product_name: str) -> List[str]:
             prioritized.append(term)
     
     return prioritized[:5]  # Return top 5 keywords
+
+def execute_product_specs_lookup(user_question: str, classification: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Direct SQL execution for product specifications lookup using AI-extracted product codes
+    
+    This function bypasses AI SQL generation and executes a direct lookup for product
+    specifications from JPNMRSdb_SPT_SALES_DRAPE_SPECS table.
+    
+    Args:
+        user_question: User question containing product codes
+        classification: Intent classification result with extracted_entities
+        
+    Returns:
+        dict: Direct specifications results for the requested products
+        
+    Raises:
+        ValueError: If required entities are not available in classification
+        Exception: If SQL execution fails (triggers fallback)
+    """
+    
+    # Extract product information from AI classification
+    extracted_entities = classification.get("extracted_entities", {})
+    product_codes_raw = extracted_entities.get("product_codes")
+    
+    if not product_codes_raw:
+        raise ValueError("No product codes extracted by AI classification")
+    
+    # Handle multiple products (comma-separated string OR list)
+    if isinstance(product_codes_raw, list):
+        products = [p.strip() for p in product_codes_raw if p.strip()]
+    else:
+        products = [p.strip() for p in product_codes_raw.split(',') if p.strip()]
+    
+    try:
+        start_time = time.time()
+        
+        # Build IN clause for multiple products - much more efficient than individual queries
+        product_list = "', '".join(products)  # Join with proper SQL escaping
+        sql = f"""
+        SELECT
+            品番 as product_code, -- Product
+            名称 as description, -- Description of base material
+            AAMIレベル as aami_level, -- AMMI level
+            横 as width_cm, --Width
+            縦 as height_cm, --Height
+            開脚 as legs_split, --Whether the legs are split (Y/N)
+            素材 as material, --Material of the opening in the middle of the drape
+            開窓部横 as opening_width_cm, --Width of the opening in the middle of the drape
+            開窓部縦 as opening_height_cm, --Height of the opening in the middle of the drape
+            形状 as opening_shape, --Shape of the opening area
+            パウチ as pouch_quantity, --Quantity of pouches
+            [コードホルダ―] as cord_holder, --Cord holder
+            透明翼 as transparent_panels --Transparent side panels
+        FROM
+            JPNMRSdb_SPT_SALES_DRAPE_SPECS
+        WHERE 
+            品番 IN ('{product_list}')
+        """
+        
+        results = execute_sql(sql)
+        execution_time_ms = (time.time() - start_time) * 1000
+        
+        # DEBUG: Log actual SQL and results
+        print(f"DEBUG: Product specs SQL: {sql}")
+        print(f"DEBUG: Raw results count: {len(results) if results else 0}")
+        if results:
+            print(f"DEBUG: First result keys: {list(results[0].keys()) if results else 'No results'}")
+            print(f"DEBUG: First result: {results[0] if results else 'No results'}")
+        
+        # Track which products were found vs missing
+        found_products = set()
+        if results:
+            found_products = {row.get('product_code') for row in results if row.get('product_code')}
+        
+        successful_products = [p for p in products if p in found_products]
+        failed_products = [p for p in products if p not in found_products]
+        
+        return {
+            "success": True,
+            "product_codes": products,  # Multiple products input
+            "specifications": results,
+            "lookup_type": "multi_product_specs" if len(products) > 1 else "single_product_specs",
+            "sql_executed": sql,
+            "execution_time_ms": round(execution_time_ms, 2),
+            "result_count": len(results) if results else 0,
+            "successful_products": successful_products,
+            "failed_products": failed_products,
+            "extraction_method": "ai_classification"
+        }
+        
+    except Exception as e:
+        # Re-raise to trigger fallback to AI workflow
+        raise Exception(f"Direct product specs SQL execution failed: {str(e)}")
 
 def get_direct_mapping_stats() -> Dict[str, Any]:
     """Get statistics about direct mapping tool performance (for monitoring)"""

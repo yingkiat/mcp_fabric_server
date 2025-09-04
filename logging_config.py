@@ -45,8 +45,91 @@ class JSONFormatter(logging.Formatter):
             
         return json.dumps(log_data)
 
+def log_request_flow(request_id: str, user_question: str, persona: str, 
+                    intent_type: str, execution_path: str, direct_tools_result: dict = None,
+                    success: bool = True, duration_ms: float = None):
+    """Log consolidated request flow - integrated into session logs"""
+    
+    # Build direct tools summary
+    tools_summary = "none"
+    if direct_tools_result:
+        if direct_tools_result.get("success"):
+            tools_summary = f"success:{direct_tools_result.get('tool_used', 'unknown')}"
+        else:
+            tools_summary = f"failed:{direct_tools_result.get('reason', 'unknown')}"
+    
+    # Add flow data to session log instead of separate flow.log
+    from session_logger import get_session_logger
+    logger = get_session_logger(request_id, user_question)
+    logger.log_event(
+        "REQUEST_FLOW_SUMMARY",
+        {
+            "user_question": user_question[:100],
+            "persona": persona,
+            "intent_type": intent_type,
+            "execution_path": execution_path,
+            "direct_tools": tools_summary,
+            "success": success,
+            "duration_ms": duration_ms
+        }
+    )
+
+def log_negative_case(request_id: str, case_type: str, user_question: str, 
+                     reason: str, classification: dict = None, additional_context: dict = None):
+    """Log negative use cases for analysis and improvement"""
+    negative_logger = logging.getLogger('negative_cases')
+    
+    negative_logger.error(
+        f"NEGATIVE_CASE: {case_type}",
+        extra={
+            'request_id': request_id,
+            'case_type': case_type,
+            'user_question': user_question,
+            'failure_reason': reason,
+            'classification': classification,
+            'context': additional_context
+        }
+    )
+
+def log_usage_metrics(request_id: str, metric_type: str, value: Any, 
+                     persona: str = None, tool_used: str = None):
+    """Log usage metrics for analytics"""
+    usage_logger = logging.getLogger('usage_metrics')
+    
+    usage_logger.info(
+        f"METRIC: {metric_type}",
+        extra={
+            'request_id': request_id,
+            'metric_type': metric_type,
+            'value': value,
+            'persona': persona,
+            'tool_used': tool_used
+        }
+    )
+
 def setup_logging():
     """Setup comprehensive logging configuration"""
+    
+    # Create logs directory
+    import os
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    
+    # Flow logging integrated into session logs (removed separate flow.log)
+    
+    # Setup negative cases logger for failure tracking
+    negative_logger = logging.getLogger('negative_cases')
+    negative_logger.setLevel(logging.ERROR)
+    negative_handler = logging.FileHandler('logs/negative_cases.log')
+    negative_handler.setFormatter(JSONFormatter())
+    negative_logger.addHandler(negative_handler)
+    
+    # Setup usage metrics logger (commented out until needed)
+    # usage_logger = logging.getLogger('usage_metrics')
+    # usage_logger.setLevel(logging.INFO)
+    # usage_handler = logging.FileHandler('logs/usage_metrics.log')
+    # usage_handler.setFormatter(JSONFormatter())
+    # usage_logger.addHandler(usage_handler)
     
     # Ensure logs directory exists
     import os
@@ -83,19 +166,19 @@ def setup_logging():
     perf_file_handler = logging.FileHandler('logs/performance.log')
     perf_file_handler.setFormatter(JSONFormatter())
     
-    error_file_handler = logging.FileHandler('logs/errors.log')
-    error_file_handler.setFormatter(JSONFormatter())
+    # error_file_handler = logging.FileHandler('logs/errors.log')
+    # error_file_handler.setFormatter(JSONFormatter())
     
-    api_file_handler = logging.FileHandler('logs/api_calls.log')
-    api_file_handler.setFormatter(JSONFormatter())
+    # api_file_handler = logging.FileHandler('logs/api_calls.log')
+    # api_file_handler.setFormatter(JSONFormatter())
     
     # Add handlers
     main_logger.addHandler(console_handler)
     main_logger.addHandler(main_file_handler)
     
     perf_logger.addHandler(perf_file_handler)
-    error_logger.addHandler(error_file_handler)
-    api_logger.addHandler(api_file_handler)
+    # error_logger.addHandler(error_file_handler)
+    # api_logger.addHandler(api_file_handler)
     
     return {
         'main': main_logger,

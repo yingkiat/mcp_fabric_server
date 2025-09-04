@@ -53,6 +53,27 @@ else:
 - Business queries → Beautiful AI analysis (like multi-stage)
 - Best of both worlds: Performance + intelligence
 
+### 4. ✅ NEW FEATURE - Generalized Competitor Mapping
+**Enhancement**: Expanded from HOGY-only to multi-competitor support
+**Status**: **IMPLEMENTED** - Direct tools now work with any competitor
+
+**Key improvements**:
+- **Multi-competitor support**: HOGY, LIVEDO, HOPES (easily extensible)
+- **Enhanced data schema**: Rich competitor metadata with manufacturer, product descriptions
+- **AI-powered pattern matching**: Replaced brittle regex with intelligent classification
+- **Multi-product queries**: Single IN-clause queries for better performance
+- **Flexible entity handling**: Supports both string and array formats from AI classification
+
+### 5. ✅ NEW FEATURE - Enhanced Stage3 Evaluation
+**Enhancement**: Improved AI evaluation to use rich database context
+**Status**: **IMPLEMENTED** - AI now provides detailed analysis with manufacturer attribution
+
+**Key improvements**:
+- **Database as source of truth**: Prioritizes database findings over user claims
+- **Discrepancy detection**: Flags when user assumptions don't match database facts
+- **Rich context utilization**: Uses all available data fields appropriately
+- **Fact-checking**: Corrects misconceptions about product manufacturers/specifications
+
 ## 🧪 TESTING
 
 **Complete testing procedures**: See [`docs/TESTING.md`](docs/TESTING.md)

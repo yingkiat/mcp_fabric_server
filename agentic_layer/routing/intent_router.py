@@ -243,18 +243,36 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
         # Step 2: Execute based on direct tool success AND result quality
         if direct_results["success"]:
             # Check if direct tool actually found meaningful results
-            direct_data = direct_results["result"].get("our_equivalents", [])
+            result_data = direct_results["result"]
+            direct_data = (result_data.get("specifications", []) or 
+                          result_data.get("results", []) or
+                          [])
+            
+            # DEBUG: Log what we're checking
+            print(f"DEBUG: Checking direct tool results - specifications: {len(result_data.get('specifications', []))}, results: {len(result_data.get('results', []))}, direct_data length: {len(direct_data) if direct_data else 0}")
             
             if direct_data and len(direct_data) > 0:
                 # Direct path: Fast data retrieval + AI evaluation
+                print(f"DEBUG: Taking direct path with {len(direct_data)} results")
                 results["tool_results"] = execute_direct_with_evaluation(
                     user_question, direct_results, classification, persona_content, request_id
                 )
+                print(f"DEBUG: Direct path completed, execution_path: {results['tool_results'].get('execution_path', 'unknown')}")
             else:
                 # Direct tool found no results - fallback to AI workflow
                 if request_id:
-                    from logging_config import tracker
+                    from logging_config import tracker, log_negative_case
                     tracker.log_direct_tool_fallback(request_id, "direct_tool_found_no_results")
+                    
+                    # Log as negative case - direct tool didn't find expected data
+                    log_negative_case(
+                        request_id=request_id,
+                        case_type="direct_tool_no_results",
+                        user_question=user_question,
+                        reason="Direct tool executed successfully but found no matching data",
+                        classification=classification,
+                        additional_context={"direct_tool_result": direct_results}
+                    )
                 
                 results["tool_results"] = execute_standard_ai_workflow(
                     user_question, classification, persona_content, request_id, {}
@@ -268,9 +286,42 @@ def execute_tool_chain(user_question: str, classification: Dict[str, Any], reque
         # Generate final response
         results["final_response"] = generate_final_response(user_question, results, persona_content)
         
+        # Log consolidated request flow
+        if request_id:
+            from logging_config import log_request_flow
+            
+            # Extract key data for logging
+            persona = classification.get("persona", "unknown")
+            intent_type = classification.get("extracted_entities", {}).get("intent_type", "unknown")
+            execution_path = results["tool_results"].get("execution_path", "unknown")
+            success = bool(results.get("final_response"))
+            
+            # Log the complete request flow
+            log_request_flow(
+                request_id=request_id,
+                user_question=user_question,
+                persona=persona,
+                intent_type=intent_type,
+                execution_path=execution_path,
+                direct_tools_result=direct_results if direct_results else None,
+                success=success
+            )
+        
     except Exception as e:
         results["error"] = str(e)
         results["final_response"] = f"Error executing tool chain: {str(e)}"
+        
+        # Log negative case - system error
+        if request_id:
+            from logging_config import log_negative_case
+            log_negative_case(
+                request_id=request_id,
+                case_type="system_error",
+                user_question=user_question,
+                reason=str(e),
+                classification=classification,
+                additional_context={"stack_trace": str(e)}
+            )
     
     return results
 
@@ -756,11 +807,17 @@ def attempt_direct_tools(user_question: str, classification: Dict[str, Any], req
         if not direct_tools:
             return {"success": False, "reason": "no_direct_tools_for_persona"}
         
+        # Track pattern matching results for consolidated logging
+        pattern_results = {}
+        
         # Try each applicable direct tool
         for tool_config in direct_tools:
             try:
                 # Check if pattern matches (pass classification to AI-powered pattern matcher)
-                if tool_config["pattern_matcher"](user_question, classification):
+                pattern_match = tool_config["pattern_matcher"](user_question, classification)
+                pattern_results[tool_config["name"]] = pattern_match
+                
+                if pattern_match:
                     
                     # Execute direct tool with timing
                     start_time = time.time()
@@ -786,10 +843,10 @@ def attempt_direct_tools(user_question: str, classification: Dict[str, Any], req
                     from logging_config import tracker
                     tracker.log_direct_tool_failure(request_id, tool_config["name"], str(e))
                 
-                print(f"Direct tool {tool_config['name']} failed: {str(e)}")
+                # Log and continue to next tool (don't print to console)
                 continue
         
-        return {"success": False, "reason": "no_pattern_match_or_all_failed"}
+        return {"success": False, "reason": "no_pattern_match_or_all_failed", "pattern_results": pattern_results}
         
     except ImportError:
         # Direct tools registry not available - fallback gracefully
@@ -813,8 +870,10 @@ def execute_direct_with_evaluation(user_question: str, direct_results: Dict[str,
         "execution_path": "direct_first_with_ai_evaluation"
     }
     
-    # Extract data from direct tool results
-    direct_data = direct_results["result"].get("our_equivalents", [])
+    # Extract data from direct tool results (handle different field names from different direct tools)
+    result_data = direct_results["result"]
+    direct_data = (result_data.get("specifications", []) or 
+                  result_data.get("results", []))
     
     if direct_data and len(direct_data) > 0:
         
