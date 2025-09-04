@@ -352,6 +352,42 @@ def execute_single_stage_workflow(user_question: str, classification: Dict[str, 
     
     results = existing_results.copy()
     
+    # Check if this is a general inquiry that likely doesn't need database access
+    intent_type = classification.get("extracted_entities", {}).get("intent_type", "")
+    enable_ai_evaluation = classification.get("enable_ai_evaluation", False)
+    
+    # For general inquiries with no business terms, skip SQL and go straight to AI evaluation
+    # This handles cases where enable_ai_evaluation might be false but we still want to answer general questions
+    if (intent_type == "general_inquiry" and 
+        not any(term in user_question.lower() for term in [
+            "product", "price", "cost", "jpnprodb", "competitor", "specification",
+            "part", "component", "inventory", "sales", "mrh-", "spt", "hogy",
+            "livedo", "hopes", "medline", "table", "database", "schema"
+        ])):
+        
+        # Skip SQL execution and go straight to stage 3 evaluation for general knowledge
+        stage3_template = load_intent_template("stage3_evaluation")
+        
+        stage3_context = f"""
+{stage3_template}
+
+PERSONA CONTEXT:
+{persona_content}
+
+GENERAL KNOWLEDGE QUESTION: No database lookup needed for this question
+
+USER QUESTION: {user_question}
+
+STAGE 3 TASK: Answer this general question using available knowledge. This does not require business/database data.
+
+IMPORTANT: This appears to be a general knowledge question. Provide a direct, helpful answer without referencing business data.
+"""
+        
+        # Direct stage 3 evaluation without SQL
+        evaluation_result = evaluate_final_results(stage3_context, request_id)
+        results["stage3_evaluation"] = evaluation_result
+        return results
+    
     enhanced_question = f"""
 Context from {classification['persona']} module:
 {persona_content}
@@ -371,7 +407,6 @@ User question: {user_question}
             results["generate_visualization"] = generate_visualization(sql_results, "table", f"Results for: {user_question}")
     
     # Add AI business evaluation if requested by classification
-    enable_ai_evaluation = classification.get("enable_ai_evaluation", False)
     if enable_ai_evaluation and "run_sql_query" in results:
         final_data = results["run_sql_query"].get("results", [])
         if final_data:
@@ -979,6 +1014,7 @@ def execute_standard_ai_workflow(user_question: str, classification: Dict[str, A
             user_question, classification, persona_content, request_id, results
         )
 
+
 def generate_final_response(user_question: str, results: Dict[str, Any], persona_context: str) -> str:
     """Generate a final business-friendly response using all tool results"""
     
@@ -1007,6 +1043,33 @@ def generate_final_response(user_question: str, results: Dict[str, Any], persona
     summary = tool_results.get("summarize_results", {})
     
     if not sql_results:
+        # For any question that produces no database results, try stage 3 evaluation as fallback
+        # This handles both business questions that find no data AND general knowledge questions
+        stage3_template = load_intent_template("stage3_evaluation")
+        
+        fallback_context = f"""
+{stage3_template}
+
+PERSONA CONTEXT:
+{persona_context}
+
+NO DATABASE RESULTS FALLBACK: The database query returned no results for this question.
+
+USER QUESTION: {user_question}
+
+STAGE 3 TASK: Since no database results were found, evaluate if this can be answered using general knowledge or provide appropriate guidance.
+
+IMPORTANT: The database contained no relevant data for this question. Either answer using available knowledge (if it's a general question) or explain why no business data was found.
+"""
+        
+        try:
+            fallback_evaluation = evaluate_final_results(fallback_context)
+            if fallback_evaluation and fallback_evaluation.get("business_answer"):
+                return fallback_evaluation["business_answer"]
+        except Exception as e:
+            # If fallback fails, continue to standard error message
+            pass
+        
         return "I wasn't able to retrieve data to answer your question. Please check if the tables are accessible or rephrase your question."
     
     response_parts = []
