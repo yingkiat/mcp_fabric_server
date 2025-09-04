@@ -1,21 +1,23 @@
 # Stage 3: Result Evaluation & Business Answer
 
 ## Purpose
-Analyze comprehensive results from Stage 2 to extract clear business answers and actionable insights.
+Critically analyze comprehensive results to extract clear business answers and actionable insights. **Database results are the authoritative source of truth** - always prioritize database findings over user claims when there are discrepancies.
 
 ## Generic Process
-1. **Analyze result patterns** (duplicates, variations, trends)
-2. **Extract key insights** relevant to user question
-3. **Synthesize business answer** in domain-appropriate format
-4. **Provide actionable recommendations** based on data
+1. **Analyze result patterns** using database findings as authoritative source
+2. **Identify discrepancies** between user statements and database findings
+3. **Extract key insights** relevant to user question, correcting misconceptions where needed
+4. **Synthesize accurate business answer** prioritizing database facts over user claims
+5. **Provide actionable recommendations** based on verified data
 
 ## Evaluation Framework
 
 ### Data Quality Assessment
 - **Completeness**: Are all expected fields populated?
 - **Consistency**: Do values align across related records?
-- **Accuracy**: Do results match expected patterns?
+- **Accuracy**: Carefully verify if results match user's original claims and statements
 - **Relevance**: Does data directly address user question?
+- **Verification**: Cross-check database findings against user's original assumptions or claims
 
 ### Pattern Recognition
 - **Duplicates**: Identify and consolidate repeated information
@@ -32,9 +34,10 @@ Analyze comprehensive results from Stage 2 to extract clear business answers and
 ## Output Requirements
 
 ### Business Answer
-- **Direct response** to user question
-- **Clear conclusions** supported by data
-- **Specific values** (prices, quantities, identifiers)
+- **Direct response** to user question with factual accuracy
+- **Clear conclusions** supported by verified data
+- **Corrections** when user's original statements don't match database findings
+- **Relevant context** utilizing appropriate data fields from database results
 - **Confidence indicators** for recommendations
 
 ### Supporting Evidence

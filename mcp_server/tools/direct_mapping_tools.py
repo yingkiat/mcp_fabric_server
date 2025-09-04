@@ -33,41 +33,54 @@ def execute_competitor_mapping(user_question: str, classification: Dict[str, Any
     if not competitor_product_raw:
         raise ValueError("No competitor product extracted by AI classification")
     
-    # Handle multiple products (comma-separated)
-    products = [p.strip() for p in competitor_product_raw.split(',') if p.strip()]
-    
-    # Direct SQL execution - simplified mapping table
-    sql = """
-    SELECT 品番 
-    FROM JPNMRSdb_SPT_SALES_DRAPE_MAPPING
-    WHERE HOGY品番 = ?
-    """
+    # Handle multiple products (comma-separated string OR list)
+    if isinstance(competitor_product_raw, list):
+        products = [p.strip() for p in competitor_product_raw if p.strip()]
+    else:
+        products = [p.strip() for p in competitor_product_raw.split(',') if p.strip()]
     
     try:
         start_time = time.time()
-        all_results = []
-        successful_products = []
-        failed_products = []
         
-        # Try each product individually
-        for product in products:
-            product = product.strip()
-            formatted_sql = sql.replace("?", f"'{product}'")
-            results = execute_sql(formatted_sql)
-            
-            if results and len(results) > 0:
-                all_results.extend(results)
-                successful_products.append(product)
-            else:
-                # Try fuzzy matching for failed products
-                fuzzy_results = _try_fuzzy_matching(product)
-                if fuzzy_results and len(fuzzy_results) > 0:
-                    all_results.extend(fuzzy_results)
-                    successful_products.append(f"{product} (fuzzy)")
-                else:
-                    failed_products.append(product)
+        # Build IN clause for multiple products - much more efficient than individual queries
+        product_list = "', '".join(products)  # Join with proper SQL escaping
+        sql = f"""
+        SELECT DISTINCT 
+            sdm.競合品番,
+            sdm.品番,
+            sdm.競合メーカー名,
+            sdm.品番2,
+            pt.pt_desc1 + ' ' + pt.pt_desc2 AS 品番説明
+        FROM 
+            JPNMRSdb_SPT_SALES_DRAPE_MAPPING sdm
+        LEFT JOIN JPNPROdb_pt_mstr pt ON sdm.品番 = pt.pt_part
+        WHERE 
+            sdm.競合品番 IN ('{product_list}')
+        """
         
+        results = execute_sql(sql)
         execution_time_ms = (time.time() - start_time) * 1000
+        
+        # Track which products were found vs missing
+        found_products = set()
+        if results:
+            found_products = {row.get('競合品番') for row in results if row.get('競合品番')}
+        
+        successful_products = [p for p in products if p in found_products]
+        failed_products = [p for p in products if p not in found_products]
+        
+        # Try fuzzy matching for failed products if any
+        fuzzy_results = []
+        if failed_products:
+            for product in failed_products:
+                fuzzy_matches = _try_fuzzy_matching(product)
+                if fuzzy_matches:
+                    fuzzy_results.extend(fuzzy_matches)
+                    successful_products.append(f"{product} (fuzzy)")
+                    failed_products = [p for p in failed_products if p != product]  # Remove from failed list
+        
+        # Combine direct and fuzzy results
+        all_results = (results or []) + fuzzy_results
         
         return {
             "success": True,

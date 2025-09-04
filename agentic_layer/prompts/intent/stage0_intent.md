@@ -18,7 +18,7 @@ Available personas (business domain experts):
 ## Classification Rules
 
 ### Competitor Query Detection
-**CRITICAL PRIORITY**: If the question contains "Hogy", "SPT" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
+**CRITICAL PRIORITY**: If the question contains "SPT", "HOGY", "LIVEDO", "HOPES" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
 
 ### Entity Extraction Requirements
 When competitor products are mentioned, extract:
