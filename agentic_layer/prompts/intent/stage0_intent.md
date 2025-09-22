@@ -14,7 +14,9 @@ Domain-agnostic intent classification and entity extraction for business queries
 ## Classification Rules
 
 ### Competitor Query Detection
-**CRITICAL PRIORITY**: If the question contains "SPT", "HOGY", "LIVEDO", "HOPES" or references competitor products, ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
+**CRITICAL PRIORITY**:
+- If the question contains "ANZ" and "SPT" or references ANZ competitor products, ALWAYS route to "anz_spt_sales_rep" persona regardless of other keywords.
+- If the question contains "SPT", "HOGY", "LIVEDO", "HOPES" or references competitor products (without ANZ), ALWAYS route to "spt_sales_rep" persona regardless of other keywords.
 
 ### Entity Extraction Requirements
 Always extract these entities for direct tool optimization:

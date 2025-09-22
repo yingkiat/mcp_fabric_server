@@ -277,6 +277,124 @@ def execute_product_specs_lookup(user_question: str, classification: Dict[str, A
         # Re-raise to trigger fallback to AI workflow
         raise Exception(f"Direct product specs SQL execution failed: {str(e)}")
 
+def execute_anz_competitor_mapping(user_question: str, classification: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Direct SQL execution for ANZ competitor product mapping using AI-extracted entities
+
+    This function bypasses AI SQL generation and executes a direct lookup for ANZ competitor
+    product equivalents. Uses entities extracted by AI during intent classification.
+
+    Args:
+        user_question: User question containing ANZ competitor products
+        classification: Intent classification result with extracted_entities
+
+    Returns:
+        dict: Direct mapping results with ANZ Medline equivalent products
+
+    Raises:
+        ValueError: If required entities are not available in classification
+        Exception: If SQL execution fails (triggers fallback)
+    """
+
+    # Extract competitor information from AI classification
+    extracted_entities = classification.get("extracted_entities", {})
+    competitor_product_raw = extracted_entities.get("competitor_product")
+    competitor_name = extracted_entities.get("competitor_name")
+
+    if not competitor_product_raw:
+        raise ValueError("No competitor product extracted by AI classification")
+
+    # Handle multiple products (comma-separated string OR list)
+    if isinstance(competitor_product_raw, list):
+        products = [p.strip() for p in competitor_product_raw if p.strip()]
+    else:
+        products = [p.strip() for p in competitor_product_raw.split(',') if p.strip()]
+
+    try:
+        start_time = time.time()
+
+        # Build flexible search terms for ANZ competitor mapping
+        search_conditions = []
+        for product in products:
+            # Create multiple search patterns for each product
+            search_terms = []
+
+            # Original product term
+            search_terms.append(f"LOWER(m.[Competitor Product Code] + ' ' + m.[Competitor Description]) LIKE '%{product.lower()}%'")
+
+            # Split product into key terms for broader matching
+            words = product.replace('-', ' ').replace('.', ' ').split()
+            for word in words:
+                if len(word) > 2:  # Skip very short words
+                    search_terms.append(f"LOWER(m.[Competitor Product Code] + ' ' + m.[Competitor Description]) LIKE '%{word.lower()}%'")
+
+            # Combine terms for this product with OR
+            if search_terms:
+                search_conditions.append(f"({' OR '.join(search_terms)})")
+
+        # Combine all product searches with OR
+        where_clause = ' OR '.join(search_conditions)
+
+        sql = f"""
+        SELECT
+            m.[Competitor Product Code],
+            m.[Competitor Description],
+            m.[Updated Medline Product Code],
+            m.[Updated Medline Description],
+            m.[Updated Medline Code Status],
+            m.[STD Cost],
+            m.[Category],
+            m.[Sub-Category],
+            m.[BNS Alt Code],
+            m.[FG (Sterile) Alt Code],
+            p.pt_um as [UOM]
+        FROM
+            anz_spt_competitor_mapping m
+        LEFT JOIN ANZPRO2EEdb_pt_mstr p ON m.[Updated Medline Product Code] = p.pt_part
+        WHERE
+            ({where_clause})
+            AND m.[Updated Medline Code Status] = 'REL'
+        ORDER BY m.[Category], m.[STD Cost]
+        """
+
+        results = execute_sql(sql)
+        execution_time_ms = (time.time() - start_time) * 1000
+
+        # Track which products were found vs missing
+        found_products = set()
+        if results:
+            # Extract competitor product codes from results to match against input
+            for row in results:
+                comp_code = row.get('Competitor Product Code', '')
+                comp_desc = row.get('Competitor Description', '')
+                full_comp = f"{comp_code} {comp_desc}".lower()
+
+                # Check which input products match this result
+                for product in products:
+                    if product.lower() in full_comp or any(word.lower() in full_comp for word in product.split() if len(word) > 2):
+                        found_products.add(product)
+
+        successful_products = list(found_products)
+        failed_products = [p for p in products if p not in found_products]
+
+        return {
+            "success": True,
+            "competitor_products": products,
+            "competitor_name": competitor_name,
+            "results": results,
+            "mapping_type": "anz_multi_product_lookup" if len(products) > 1 else "anz_single_product_lookup",
+            "sql_executed": sql,
+            "execution_time_ms": round(execution_time_ms, 2),
+            "result_count": len(results) if results else 0,
+            "successful_products": successful_products,
+            "failed_products": failed_products,
+            "extraction_method": "ai_classification"
+        }
+
+    except Exception as e:
+        # Re-raise to trigger fallback to AI workflow
+        raise Exception(f"ANZ direct mapping SQL execution failed: {str(e)}")
+
 def get_direct_mapping_stats() -> Dict[str, Any]:
     """Get statistics about direct mapping tool performance (for monitoring)"""
     

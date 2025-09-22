@@ -3,7 +3,7 @@ Direct Tools Registry - Performance optimization through pattern-matched fast ex
 """
 import re
 from typing import Dict, List, Callable, Any
-from .direct_mapping_tools import execute_competitor_mapping, execute_product_specs_lookup
+from .direct_mapping_tools import execute_competitor_mapping, execute_product_specs_lookup, execute_anz_competitor_mapping
 
 def _is_competitor_mapping_applicable(user_question: str, classification: dict = None) -> bool:
     """
@@ -48,6 +48,28 @@ def _is_product_specs_applicable(user_question: str, classification: dict = None
     
     # Try direct if we have product codes AND correct intent
     return has_product_codes and intent_type == "specs_lookup"
+
+def _is_anz_competitor_mapping_applicable(user_question: str, classification: dict = None) -> bool:
+    """
+    AI-powered pattern matching: Use extracted entities to determine if ANZ competitor mapping applies
+    - Must have competitor product extracted by AI
+    - Must be anz_spt_sales_rep persona
+    - Intent type should be competitor_mapping
+    """
+    if not classification:
+        return False
+
+    # Must be ANZ competitor-related query
+    if classification.get("persona") != "anz_spt_sales_rep":
+        return False
+
+    # Use AI-extracted entities instead of regex patterns
+    extracted_entities = classification.get("extracted_entities", {})
+    has_competitor_product = bool(extracted_entities.get("competitor_product"))
+    intent_type = extracted_entities.get("intent_type")
+
+    # Try direct if we have competitor product AND correct intent
+    return has_competitor_product and intent_type == "competitor_mapping"
 
 def get_direct_tools_for_persona(persona: str) -> List[Dict[str, Any]]:
     """Get applicable direct tools based on persona"""
@@ -101,6 +123,25 @@ DIRECT_TOOLS = {
         # }
     ],
     
+    "anz_spt_sales_rep": [
+        {
+            "name": "anz_competitor_mapping",
+            "pattern_matcher": lambda q, classification=None: _is_anz_competitor_mapping_applicable(q, classification),
+            "executor": execute_anz_competitor_mapping,
+            "description": "Direct ANZ competitor product mapping for competitor products",
+            "example_triggers": [
+                "Replace Terumo BD Luer-Lock Syringe 2.5mL with our ANZ equivalent",
+                "Find ANZ Medline equivalent for angio drape",
+                "What's our domestic alternative to Femoral Angiography Drape 230cm x 340cm"
+            ],
+            "expected_performance": {
+                "avg_execution_time_ms": 150,
+                "success_rate_target": 0.90,
+                "fallback_acceptable": True
+            }
+        }
+    ],
+
     "product_planning": [
         # Future tools for product planning persona:
         # {
